@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf }}">
+  <title>Main · Robotics control room</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/mission.css">
+  <script src="/static/mission.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/"><span class="brand-mark">M<span>·</span></span><span>MAIN<span class="brand-sub">ROBOTICS LAB</span></span></a>
+    <div class="nav-label">WORKSPACE</div>
+    <nav aria-label="Main navigation">
+      <a href="/" data-page="home"><span class="nav-icon">⌂</span>Overview</a>
+      <a href="/datasets" data-page="datasets"><span class="nav-icon">▤</span>Datasets</a>
+      <a href="/models" data-page="models"><span class="nav-icon">◇</span>Model library</a>
+      <a href="/training" data-page="training"><span class="nav-icon">↗</span>Training</a>
+      <a href="/tags" data-page="tags"><span class="nav-icon">▦</span>AprilTags</a>
+      <a href="/missions" data-page="missions"><span class="nav-icon">◎</span>Missions</a>
+      <a href="/live" data-page="live"><span class="nav-icon">◉</span>Mission monitor</a>
+      <a href="/jobs" data-page="jobs"><span class="nav-icon">≡</span>Jobs & logs<span id="job-count" class="nav-count">0</span></a>
+    </nav>
+    <div class="nav-label secondary-label">PROJECT</div>
+    <nav aria-label="Project navigation">
+      <a href="/files" data-page="files"><span class="nav-icon">▱</span>Files & editor</a>
+      <a href="/settings" data-page="settings"><span class="nav-icon">⚙</span>Profiles & settings</a>
+    </nav>
+    <div class="sidebar-footer"><span class="online-dot"></span>LOCAL WORKSPACE<span>Main project · localhost only</span></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><span><span class="muted">Workspace</span><span class="slash">/</span><strong id="breadcrumb">Overview</strong></span><div class="topbar-right"><span id="resource-status" class="badge neutral">Checking jobs…</span><button id="refresh" class="icon-button" aria-label="Refresh project">↻</button></div></header>
+    <main id="content" tabindex="-1"><div class="loading">Opening Main workspace…</div></main>
+    <footer class="page-footer"><span>MAIN / VIP 295</span><span>Local files. Explicit actions. Visible jobs.</span></footer>
+  </div>
+  <div id="toast" role="status" aria-live="polite" hidden></div>
+  <dialog id="dialog"><div class="dialog-heading"><h2 id="dialog-title"></h2><button id="dialog-close" class="icon-button" aria-label="Close dialog">×</button></div><div id="dialog-body"></div></dialog>
+</body>
+</html>

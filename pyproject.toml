@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vip295-robotics"
+version = "0.1.0"
+description = "Phone-camera robot experiments and a stop-and-stare YOLO to AprilTag mission"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "phonesense>=0.2.0", "telemetrix-uno-r4>=1.1.1",
+    "opencv-python>=4.8", "numpy>=1.24", "ultralytics>=8.4,<9",
+    "pupil-apriltags>=1.0.4.post11", "lap>=0.5.12",
+    "flask>=3.1,<4", "waitress>=3,<4",
+    # Windows ARM64 host with x64 Python: newer Polars misidentifies CPU flags.
+    "polars[rtcompat]==1.35.2; sys_platform == 'win32' and platform_machine == 'ARM64'",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["robotics_lab*", "demos*", "missions*", "training*", "tools*", "webapp*"]
+
+[tool.setuptools.package-data]
+webapp = ["templates/*.html", "static/*.css", "static/*.js", "*.md"]
