@@ -23,6 +23,7 @@ from robotics_lab.paths import PROJECT_ROOT
 from robotics_lab.snapshots import read_snapshot, snapshot_path, snapshot_exists
 from .catalog import MODEL_PROVIDERS, catalog
 from .help import CONFIG_HELP
+from .preview import open_preview, latest_frame
 from .jobs import Jobs, config_values
 from .storage import IMAGES, TEXT, VIDEOS, Store, name, write_json
 
@@ -113,12 +114,15 @@ def create_app(root=PROJECT_ROOT, *, testing=False):
                 schema.append(dict(key=field.name, default=default,
                                    help=CONFIG_HELP[field.name],
                                    kind='pins' if field.name.endswith('_pins') else 'number' if isinstance(default, (int, float)) else 'text',
-                                   options=list(OPTIONS[field.name]) if field.name in OPTIONS else None,
+                                   options=list(OPTIONS[field.name]) if field.name in OPTIONS else
+                                       ['off','learned'] if field.name=='body_control' else
+                                       ['frozen','tag_online'] if field.name=='body_learning' else None,
                                    integer=type(default) is int))
             profiles = [dict(id=p.stem, **json.loads(p.read_text(encoding='utf-8')))
                         for p in (store.state/'profiles').glob('*.json')]
             return jsonify(root=str(store.root), folders=[e for e in store.listing() if e['directory']],
                            models=models, datasets=store.discover('datasets', {'.yaml', '.yml'}),
+                           body_profiles=store.discover('calibrations', {'.json'}),
                            media=store.discover('datasets', IMAGES | VIDEOS | {'.zip'}) + store.discover('assets', IMAGES | VIDEOS) + store.discover('runs/verification', IMAGES | VIDEOS),
                            tags=store.discover('assets/tags', IMAGES), jobs=jobs.all(),
                            catalog=catalog(), defaults=defaults, config_schema=schema, profiles=profiles,
@@ -304,10 +308,13 @@ def create_app(root=PROJECT_ROOT, *, testing=False):
     @app.get('/api/jobs/<ticket>/camera')
     def mission_camera(ticket):
         directory = jobs.directory(ticket)
+        channel = request.args.get('channel', 'camera')
+        if channel not in {'camera', 'observation'}:
+            raise ValueError('Unknown video channel')
         if jobs.records[ticket]['kind'] != 'mission':
             raise ValueError('Only missions have a live camera stream.')
         if not camera_slots.acquire(blocking=False):
-            return jsonify(error='Three camera viewers are already connected. Close an unused monitor tab.'), 429
+            return jsonify(error='Three video streams are already connected. Continuous preview uses two streams per monitor; close an unused tab.'), 429
         released = False
         release_lock = threading.Lock()
         def release():
@@ -319,21 +326,31 @@ def create_app(root=PROJECT_ROOT, *, testing=False):
         def stream():
             last_modified = None
             try:
+                try:
+                    with open_preview(directory, channel=channel) as upstream:
+                        while True:
+                            chunk = upstream.read1(65536)
+                            if not chunk:
+                                return
+                            yield chunk
+                except (OSError, ValueError):
+                    pass  # ended/older workers retain immutable snapshot fallback
                 while True:
-                    path = snapshot_path(directory, 'camera.jpg')
+                    logical = 'camera.jpg' if channel == 'camera' else 'preview.jpg'
+                    path = snapshot_path(directory, logical)
                     try:
                         if path is None:
                             raise FileNotFoundError('No camera frame yet')
                         modified = path.stat().st_mtime_ns
                         if modified != last_modified:
-                            jpeg = read_snapshot(directory, 'camera.jpg')
+                            jpeg = read_snapshot(directory, logical)
                             last_modified = modified
                             yield b'--frame\r\nContent-Type: image/jpeg\r\nContent-Length: '+str(len(jpeg)).encode()+b'\r\n\r\n'+jpeg+b'\r\n'
                     except OSError:
                         pass
                     if jobs.records[ticket]['status'] not in {'starting', 'running', 'stop_requested'}:
                         break
-                    time.sleep(.2)
+                    time.sleep(.04)
                 yield b'--frame--\r\n'
             finally:
                 release()
@@ -346,7 +363,7 @@ def create_app(root=PROJECT_ROOT, *, testing=False):
         directory = jobs.directory(ticket)
         if not snapshot_exists(directory, 'preview.jpg'):
             return jsonify(error='No stationary observation yet.'), 404
-        return Response(read_snapshot(directory, 'preview.jpg'), mimetype='image/jpeg')
+        return Response(latest_frame(directory, 'observation'), mimetype='image/jpeg')
 
     def color_mission(ticket):
         directory = jobs.directory(ticket)
@@ -364,7 +381,7 @@ def create_app(root=PROJECT_ROOT, *, testing=False):
     def freeze_color_frame(ticket):
         with store.lock:
             directory = color_mission(ticket)
-            jpeg = read_snapshot(directory, 'camera.jpg')
+            jpeg = latest_frame(directory)
             folder = directory/'.color-picker'
             folder.mkdir(exist_ok=True)
             token = secrets.token_hex(16)

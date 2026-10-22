@@ -46,9 +46,9 @@ STAGE_PAUSE_SECONDS = 0.5
 RECORD_FPS = 20.0
 NAVIGATION = Settings(
     acquire_frames=3, acquire_seconds=0.12,
-    grace_seconds=0.30, search_after=0.65, memory_seconds=4.0,
-    base_speed=0.22, steering_gain=0.35, max_turn=0.22,
-    search_speed=0.18, search_turn=1.1, search_pause=0.8,
+    grace_seconds=0.30, search_after=1.3, memory_seconds=5.0,
+    base_speed=0.3, steering_gain=0.03, max_turn=0.5,
+    search_speed=1.5, search_turn=0.6, search_pause=0.8,
 )
 # /////////////////////// Edit HERE END
 
@@ -61,6 +61,7 @@ class MotorPins(NamedTuple):
 
 LEFT_MOTOR = MotorPins(7, 4, 5)
 RIGHT_MOTOR = MotorPins(9, 8, 6)
+
 
 
 @dataclass

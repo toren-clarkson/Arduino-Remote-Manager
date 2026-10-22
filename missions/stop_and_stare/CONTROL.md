@@ -110,6 +110,12 @@ capture timestamps and encoder/IMU fusion remain in the root README TODO.
 
 ## Component contracts
 
+A learned [body-response middleware](../../calibrations/README.md) can now transform
+planned pulses before motor execution. It uses `Step.wheel_holds` for independent
+braking, records requested PWM integrals, and preserves stopping/observation phases.
+Custom motion drivers using learned control must implement those holds and report
+`last_impulse`; a generic driver that ignores them is not compatible with body learning.
+
 Factories in [components.py](components.py) are trusted code loaded by both server
 and worker. Config validates names against these registries and the UI renders
 their options automatically. Browsers cannot submit import paths or Python code.

@@ -24,6 +24,7 @@ class Step:
     left: float = 0
     right: float = 0
     hold_seconds: float = 0
+    wheel_holds: tuple[float, float] | None = None  # body controller may brake a faster wheel earlier
 
 
 def confirmed_sighting(samples, cfg: Config):

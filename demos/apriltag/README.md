@@ -22,3 +22,8 @@ Both scripts retain the color -> tag sequence. Check the board address, motor di
 `--backend opencv` selects the alternative detector. `--record new.avi` saves raw processed frames; `--log-csv new.csv` saves timing/vision diagnostics. Output paths must be new. Replay always disables the board connection. Full research and tuning notes are in [DESIGN.md](DESIGN.md).
 
 These earlier approaches still permit movement while observing during approach. For **every motion** to be followed by a stationary look, use [the new mission](../../missions/stop_and_stare/README.md).
+
+
+## TODO
+1. Stop Stare
+2. As it approaches the tracking object/tag, the degree at which it steers should decrease

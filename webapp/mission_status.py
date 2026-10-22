@@ -39,4 +39,5 @@ def mission_status(directory):
     runtime['phone_urls'] = phone_links(text+'\n'+'\n'.join(runtime.get('phone_urls', [])))
     runtime['camera_available'] = snapshot_exists(directory, 'camera.jpg')
     runtime['observation_available'] = snapshot_exists(directory, 'preview.jpg')
+    runtime.pop('preview_ipc', None)  # worker-to-server transport details are not UI data
     return runtime

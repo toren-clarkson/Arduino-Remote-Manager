@@ -1,5 +1,11 @@
 # Automated verification
 
+`test_body_learning.py` verifies simulated motor reversal/unequal gain identification,
+fit rejection, immutable profiles, bounded adaptation, independent wheel braking,
+command integration and calibration abort on target loss. `test_live_preview.py`
+checks authenticated in-memory JPEG transport, bounded snapshots and continuous
+inference that never plans or pulses motors.
+
 `test_mission_components.py` adds hardware-free coverage for real HSV-to-AprilTag
 perception, exact frozen-frame color picking, safe color changes, PID timing/limits,
 Kalman uncertainty and component substitution. Physical tuning and browser layout

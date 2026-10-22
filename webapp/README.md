@@ -32,6 +32,28 @@ Arduino. On another device, `localhost` refers to that device, not this PC.
 
 ## Pages
 
+For the new **Learn robot body** option, saved profiles and learned control,
+follow [calibrations/README.md](../calibrations/README.md). It uses a fixed AprilTag
+and eight explicit user-started motor probes. No neural-network training is needed.
+
+**Continuous detector preview** on Missions runs fresh detections continuously
+without opening an Arduino connection or issuing movement requests. Choose tag-only
+for AprilTags or an object provider for HSV/YOLO. It remains on the selected first
+leg instead of performing an approach. `max_batches` becomes a preview frame limit;
+0 continues until Stop. Driving and calibration are rejected in this mode.
+
+Live raw and continuous annotated frames use authenticated loopback streaming between
+worker and webapp, capped by `preview_fps` (1–30). They no longer wait for per-frame
+disk publication. Immutable JPEG downloads remain as approximately one-second snapshots;
+status snapshots are throttled separately. Older jobs retain a snapshot fallback.
+The phone still connects only to its normal PhoneSense URL, not the internal IPC port.
+
+Normal driving deliberately updates its detector image only during stationary bursts.
+Movement, ramping, settling and frame flushing still consume time. A smooth live feed
+does not mean 25 robot decisions per second. Camera FPS and detector milliseconds in
+the monitor distinguish acquisition/display rate from model throughput. CPU YOLO may
+need a smaller model or image size; faster video transport cannot make inference free.
+
 Question-mark icons beside inputs explain their effect. Hover, focus with Tab,
 or tap to read them. Job and mission schemas carry descriptions for extensions.
 

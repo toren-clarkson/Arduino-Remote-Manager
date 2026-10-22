@@ -5,6 +5,26 @@ Arduino or moving physical motors.
 
 ## Automated checks
 
+Body learning and streaming update: 121 Python tests pass, including simulated
+reversed/unequal motors, independent braking/command integration, eight-probe fitting,
+lost-tag aborts, transport authentication and motor-free continuous preview. These
+do not physically calibrate or drive the robot.
+
+Actual continuous HSV preview job `0efbd60cde6543d3b38fab2d9ac571da` received a
+25 FPS simulated phone via the real PhoneSense HTTPS WebSocket. Two concurrent
+webapp streams measured **23.62 FPS raw** and **25.28 FPS annotated** over 75 frames
+each, with **14.6 ms** reported inference at the sampled status. No motion was
+requested (`drive=False`). Evidence: `.control/phonesense-preview-fps.json`.
+An actual video-replay worker measured about 16.3 FPS on both channels; replay also
+decodes/re-encodes its source frames. Evidence: `.control/live-preview-verification.json`.
+
+The actual `models/red-ball-v1.pt` CPU preview at input size 416 initially measured
+median **322.3 ms** inference over 24 frames (about 3 inferences/second), showing a
+model-compute limit distinct from live transport. Evidence:
+`.control/yolo-preview-verification.json`. A thread-selection experiment increased
+the real worker's median to 465.55 ms despite a faster synthetic warmup, so automatic
+thread tuning was removed. These measurements do not promise 25 FPS CPU YOLO.
+
 Root README TODO implementation: **108 Python tests passed**, including 14 new
 component/color-picker tests. Both frontend scripts passed `node --check`;
 `pip check` reported no broken requirements. All ten page templates rendered

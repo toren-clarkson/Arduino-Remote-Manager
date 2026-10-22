@@ -19,6 +19,19 @@ class PulseDriver:
         self.cfg, self.drive, self.clock, self.sleep = cfg, drive, clock, sleep
         self.board = self.control = None
         self.motors = (Pins(*cfg.left_pins), Pins(*cfg.right_pins))
+        self.last_impulse = None
+        self._integral = None
+
+    def _sample_impulse(self):
+        if self._integral is None or self.control is None:
+            return
+        now = self.clock()
+        pwm = [float(self.control.states[m].written_pwm or 0)*(self.control.states[m].direction or 0)
+               for m in self.motors]
+        dt = max(0,now-self._impulse_time)
+        for i in range(2):
+            self._integral[i] += dt*(self._impulse_pwm[i]+pwm[i])/(2*255)
+        self._impulse_time, self._impulse_pwm = now,pwm
 
     async def open(self):
         if not self.drive:
@@ -51,6 +64,7 @@ class PulseDriver:
     async def _wait(self, seconds, phase, hook):
         deadline = self.clock()+seconds
         while self.clock() < deadline:
+            self._sample_impulse()
             await hook(phase)  # polls connection and keyboard only; never performs inference
             await self.sleep(self.cfg.motor_interval)
 
@@ -65,9 +79,11 @@ class PulseDriver:
             return
         deadline = self.clock()+self.cfg.ramp_timeout
         while True:
+            self._sample_impulse()
             await hook(phase)
             for motor, speed in zip(self.motors, speeds):
                 await asyncio.wait_for(self.control.set_speed(motor, speed), .5)
+                self._sample_impulse()
             if all(abs(self.control.states[m].pwm-target) < .01 for m, target in zip(self.motors, targets)):
                 return
             if self.clock() >= deadline:
@@ -75,12 +91,33 @@ class PulseDriver:
             await self.sleep(self.cfg.motor_interval)
 
     async def pulse(self, step, hook):
+        self.last_impulse = None
+        self._integral = [0.,0.]
+        self._impulse_time = self.clock()
+        self._impulse_pwm = [0.,0.]
+        completed = False
         try:
             await self._ramp((step.left, step.right), "RAMP_UP", hook)
-            await self._wait(step.hold_seconds, "MOVE", hook)
+            if step.wheel_holds is None or self.control is None:
+                await self._wait(step.hold_seconds, "MOVE", hook)
+            else:
+                started = self.clock()
+                while self.clock()-started < step.hold_seconds:
+                    self._sample_impulse()
+                    await hook('MOVE')
+                    for motor,speed,hold in zip(self.motors,(step.left,step.right),step.wheel_holds):
+                        await asyncio.wait_for(self.control.set_speed(motor,speed if self.clock()-started < hold else 0),.5)
+                        self._sample_impulse()
+                    await self.sleep(self.cfg.motor_interval)
             await self._ramp((0, 0), "BRAKE", hook)
+            completed = True
         finally:
+            self._sample_impulse()
             await self.stop()
+            self._sample_impulse()
+            if completed and self.drive and self.control is not None:
+                self.last_impulse = tuple(self._integral)
+            self._integral = None
 
     async def close(self):
         try:

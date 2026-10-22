@@ -134,12 +134,14 @@ function helpIcon(text) {
 
 function addFieldHelp(root=document) {
   const descriptions={folder:'Project subfolder receiving the uploaded files. Existing files will not be overwritten.',
+    continuous_preview:'Run the detector continuously on fresh frames. It never plans or drives motors; detector runtime still limits inference speed.',
+    calibrate_body:'Learn a body response from eight short single-motor probes while viewing a fixed AprilTag. Requires explicit driving, an attached camera, clear space and a new profile filename.',
     files:'Choose local files to copy into the selected project folder.', label:'Friendly display name for this model; changing it does not rename the weight file.',
     provider:'Runtime provider responsible for loading this model. A catalog entry alone does not add execution support.',
     notes:'Notes about the model, its classes, data or intended use. These do not change the weights.',
     name:'Name for this file, folder or saved profile. Use a distinct name to keep previous versions.',
     video:'Live uses PhoneSense. Replay uses the selected video and always disables physical motors.',
-    max_batches:'Stop after this many observation batches, or use 0 to continue until completion or Stop.',
+    max_batches:'Stop after this many observation batches, or detector frames in continuous preview. Use 0 to continue; body calibration always uses eight probes.',
     save_frames:'Save accepted stationary source images alongside the session CSV for later inspection.',
     drive:'Enable real motor commands to the configured Arduino. Leave unchecked for a preview.',
     mission_mode:'Choose which target sequence the mission should complete.',
@@ -173,6 +175,7 @@ function configField(key, values) {
   let input;
   if (key === 'weights') input = `<select name="weights"><option value="">No model (tag-only)</option>${options(state.models.map(m=>({value:m.path,label:m.label || m.name})),value)}</select>`;
   else if (key === 'tracker') input = `<select name="tracker">${options(state.catalog.trackers.map(t=>({value:t.id,label:t.label})),value)}</select>`;
+  else if (key === 'body_model') input = `<input name="body_model" value="${esc(value)}" list="body-options" required><datalist id="body-options">${(state.body_profiles || []).map(p=>`<option value="${esc(p.path)}"></option>`).join('')}</datalist>`;
   else if (spec.options) input = `<select name="${key}">${options(spec.options.map(v=>({value:v,label:v})),value)}</select>`;
   else if (key === 'target_class') input = `<input name="target_class" value="${esc(value)}" list="class-options" required>`;
   else input = `<input name="${key}" type="${spec.kind==='number' ? 'number' : 'text'}" ${spec.kind==='number' ? `step="${spec.integer ? '1' : 'any'}"` : ''} value="${esc(spec.kind==='pins' ? value.join(', ') : value)}" ${key==='phone_ip' ? '' : 'required'}>`;
@@ -192,6 +195,7 @@ function missionsPage() {
     'Stationary observations & detection':['settle_seconds','discard_frames','observe_frames','confirmations','confidence','image_size','device','tag_min_margin','tag_quad_decimate','tag_threads'],
     'Timed movement & ramps':['motion_driver','forward_speed','turn_speed','search_speed','forward_min_seconds','forward_max_seconds','turn_min_seconds','turn_max_seconds','search_seconds','min_pwm','acceleration','deceleration','motor_interval','ramp_timeout'],
     'Steering & position filtering':['steering_controller','pid_kp','pid_ki','pid_kd','pid_integral_limit','position_estimator','filter_process_noise','filter_measurement_noise','filter_motion_noise','filter_max_uncertainty'],
+    'Robot body response':['body_control','body_model','body_learning','body_probe_speed','body_probe_seconds','preview_fps'],
     'Timeouts & target memory':['observation_timeout','inference_timeout','camera_timeout','camera_reconnect_timeout','max_result_age','empty_batches_before_search','position_memory_seconds']
   };
   const known = Object.values(groups).flat().concat('mission_mode');
@@ -201,6 +205,7 @@ function missionsPage() {
   `<div class="notice">All three templates use stop-and-stare: stop → settle → fresh images → confirm → one movement pulse → stop. The robot never plans from images taken during a pulse.</div>`+
   `<form data-form="mission" id="mission-form"><div class="radio-cards">${state.catalog.missions.map(m=>`<label class="radio-card"><input type="radio" name="mission_mode" value="${m.id}" ${values.mission_mode===m.id ? 'checked' : ''}><strong>${esc(m.label)}</strong><span>${esc(m.description)}</span></label>`).join('')}</div>`+
   `<div class="panel"><div class="panel-header"><div><h2>Mission configuration</h2><p>Saved profiles and job snapshots make runs reproducible.</p></div><div class="actions"><select id="profile-select" aria-label="Saved profile"><option value="">Load profile…</option>${options(state.profiles.map(p=>({value:p.id,label:p.name})), '')}</select><button type="button" class="secondary" data-action="save-profile">Save profile</button></div></div><div class="panel-body">${Object.entries(groups).map(([label,keys],i)=>`<details ${i<2 ? 'open' : ''}><summary>${esc(label)}</summary><div class="form-grid">${keys.map(k=>configField(k,values)).join('')}</div></details>`).join('')}<datalist id="class-options">${[...new Set(state.models.flatMap(m=>Object.values(m.inspection?.classes || {})))].map(c=>`<option value="${esc(c)}"></option>`).join('')}</datalist></div></div>`+
+  panel('Run type','Choose normal stop-and-stare, a continuous motor-free preview, or a separate body calibration.',`<div class="form-actions"><label><input type="checkbox" name="continuous_preview"> Continuous detector preview (motors disabled)</label></div><div class="form-actions"><label><input type="checkbox" name="calibrate_body"> Learn robot body using a fixed AprilTag</label></div><p class="inline-help">Calibration runs eight short single-motor probes in clear space. Attach the camera to the robot, keep the marker fixed, select a new body model filename, and explicitly enable driving below. Lost/uncertain marker detections abort without searching. A saved body profile can then be selected with body control = learned.</p>`)+
   panel('Launch options','Preview is the default. Camera URLs appear in the job log once PhoneSense starts.',`<div class="form-grid"><label class="field"><span>Input source</span><select name="video"><option value="">Live PhoneSense camera</option>${options(state.media.filter(m=>m.video).map(m=>({value:m.path,label:`Replay: ${m.path}`})), '')}</select></label><label class="field"><span>Observation batch limit (0 = until complete / Stop)</span><input name="max_batches" type="number" min="0" max="100000" step="1" value="0" required></label></div><div class="form-actions"><label><input type="checkbox" name="save_frames" checked> Save stationary observations</label></div><div class="form-actions"><label class="drive-check"><input type="checkbox" name="drive"><span><strong>Enable physical robot driving</strong><small>Connects to the configured Arduino. Leave unchecked for preview. Video replay always disables motors.</small></span></label></div><div class="form-actions"><button class="primary" type="submit">Start mission →</button><button class="secondary" type="button" data-action="reset-mission">Reset defaults</button><span class="muted">One mission / compute job at a time.</span></div>`)+'</form>'+
   jobForms('missions')+
   `<div class="section-heading"><h2>Mission runs</h2><a href="${filesURL('runs/stop_and_stare')}">Session files →</a></div><section class="panel">${jobsTable(state.jobs.filter(j=>j.kind==='mission'),8)}</section>`;
@@ -351,7 +356,7 @@ document.addEventListener('submit',async event=>{
     }
     if(form.dataset.form==='mission') {
       const config=collectConfig(form); localStorage.setItem('main-mission-config',JSON.stringify(config));
-      await launch('mission',{config,video:values.video,drive:!!form.elements.drive.checked,save_frames:!!form.elements.save_frames.checked,max_batches:Number(values.max_batches)});
+      await launch('mission',{config,video:values.video,drive:!!form.elements.drive.checked,save_frames:!!form.elements.save_frames.checked,max_batches:Number(form.elements.max_batches.value),continuous_preview:!!form.elements.continuous_preview.checked,calibrate_body:!!form.elements.calibrate_body.checked});
     }
     if(form.dataset.form==='model') { await api('/api/models',{method:'PUT',body:{path:form.dataset.path,...values}}); $('#dialog').close(); await refresh(); toast('Model details saved.'); }
     if(form.dataset.form==='name') {
@@ -371,6 +376,29 @@ document.addEventListener('input',event=>{
   if(event.target.id==='model-filter') $$('.model-card').forEach(card=>card.hidden=!card.dataset.filter.includes(event.target.value.toLowerCase()));
 });
 document.addEventListener('change',async event=>{
+  if(['continuous_preview','calibrate_body'].includes(event.target.name)) {
+    const form=$('#mission-form');
+    if(event.target.name==='calibrate_body' && event.target.checked) {
+      form.elements.continuous_preview.checked=false;
+      form.querySelector('input[name="mission_mode"][value="tag_only"]').checked=true;
+      form.elements.body_control.value='off';
+      syncMissionInputs();
+    }
+    if(event.target.name==='continuous_preview' && event.target.checked) {
+      form.elements.calibrate_body.checked=false;
+      form.elements.drive.checked=false;
+      form.elements.save_frames.checked=false;
+    }
+    if(form.elements.calibrate_body.checked) {
+      form.elements.video.value='';
+      form.elements.max_batches.value='0';
+    }
+    form.elements.video.disabled=form.elements.calibrate_body.checked;
+    form.elements.max_batches.disabled=form.elements.calibrate_body.checked;
+    form.querySelector('button[type="submit"]').textContent=form.elements.calibrate_body.checked ? 'Start body calibration' : form.elements.continuous_preview.checked ? 'Start detector preview' : 'Start mission';
+    form.elements.drive.disabled=form.elements.continuous_preview.checked || !!form.elements.video.value;
+    form.elements.save_frames.disabled=form.elements.continuous_preview.checked;
+  }
   if(event.target.id==='monitor-select' && event.target.value) { location.href=liveURL(event.target.value); return; }
   if(['mission_mode','object_provider','steering_controller','position_estimator'].includes(event.target.name)) syncMissionInputs();
   if(event.target.id==='profile-select' && event.target.value) {
@@ -380,7 +408,7 @@ document.addEventListener('change',async event=>{
   if(event.target.name==='video' && page==='missions') {
     const drive=$('#mission-form').elements.drive;
     if(event.target.value) drive.checked=false;
-    drive.disabled=!!event.target.value;
+    drive.disabled=!!event.target.value || $('#mission-form').elements.continuous_preview.checked;
   }
 });
 $('#dialog-close').addEventListener('click',()=>$('#dialog').close());

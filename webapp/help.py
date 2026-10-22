@@ -1,6 +1,12 @@
 """Shared field descriptions for schemas, mission tuning and help icons."""
 
 CONFIG_HELP = {
+    'body_control': 'Off uses the manual mapping; learned uses a saved camera-response model to compensate motor polarity and relative response.',
+    'body_model': 'JSON response profile under calibrations/. Calibration writes a new filename; learned control loads a matching existing profile.',
+    'body_learning': 'Frozen keeps the fitted response. Tag online allows small in-memory updates from fresh before/after views of a fixed AprilTag; never learns from moving objects.',
+    'body_probe_speed': 'Motor demand for each calibration probe. Calibrate in clear space with the camera attached; ramps also move the robot.',
+    'body_probe_seconds': 'Hold duration for each calibration probe, excluding ramps. Target loss aborts; there is no automatic search during calibration.',
+    'preview_fps': 'Maximum live display updates per second, from 1 to 30. This does not make the robot plan from moving-camera frames.',
     'mission_mode': 'Choose the object approach, tag approach, or object followed by tag sequence.',
     'arduino_ip': 'UNO R4 Wi-Fi address printed by its Serial Monitor. The app does not discover this automatically.',
     'phone_ip': 'Optional PC network-interface address reachable by the phone. Leave blank for PhoneSense to choose.',

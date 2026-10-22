@@ -40,6 +40,9 @@ def config_values(store, values):
         values['phone_ip'] = None
     cfg = Config(**values)
     cfg.validate()
+    body_file = store.path(cfg.body_model)
+    if not body_file.is_relative_to(store.path('calibrations')) or body_file.suffix.lower() != '.json':
+        raise ValueError('Body profiles must be JSON files under calibrations/')
     if not re.fullmatch(r'cpu|mps|\d+(,\d+)*', cfg.device):
         raise ValueError('Device must be cpu, mps, or GPU indices such as 0.')
     result = asdict(cfg)
@@ -102,10 +105,28 @@ class Jobs:
         if kind not in JOBS or not isinstance(params, dict):
             raise ValueError('Unknown job type or invalid parameters.')
         if kind == 'mission':
-            if set(params) - {'config', 'drive', 'video', 'max_batches', 'save_frames'}:
+            if set(params) - {'config', 'drive', 'video', 'max_batches', 'save_frames', 'continuous_preview', 'calibrate_body'}:
                 raise ValueError('Unknown mission launch option.')
             config = config_values(self.store, params.get('config', {}))
             drive = params.get('drive', False)
+            continuous = params.get('continuous_preview', False)
+            calibrate = params.get('calibrate_body', False)
+            if type(continuous) is not bool or type(calibrate) is not bool:
+                raise ValueError('Preview and calibration flags must be booleans')
+            if continuous and (drive or calibrate):
+                raise ValueError('Continuous detector preview disables all motor driving and calibration')
+            if calibrate and (not drive or params.get('video')):
+                raise ValueError('Body calibration requires explicit physical driving and a live robot camera')
+            if calibrate:
+                config['mission_mode'] = 'tag_only'
+                config['body_control'] = 'off'
+                if self.store.path(config['body_model']).exists():
+                    raise ValueError('Choose a new body_model filename; calibration never overwrites a profile')
+            elif config['body_control'] == 'learned' and not continuous:
+                from robotics_lab.body_model import VisualBodyModel
+                checked = dict(config)
+                checked['weights'] = self.store.path(checked['weights'])
+                VisualBodyModel.load(self.store.path(config['body_model']),Config(**checked))
             if type(drive) is not bool or type(params.get('save_frames', True)) is not bool:
                 raise ValueError('Drive and save_frames must be booleans.')
             video = params.get('video') or ''
@@ -122,7 +143,8 @@ class Jobs:
             batches = params.get('max_batches', 0)
             if type(batches) is not int or not 0 <= batches <= 100000:
                 raise ValueError('max_batches must be an integer from 0 to 100000.')
-            return dict(config=config, drive=drive, video=video, max_batches=batches, save_frames=params.get('save_frames', True))
+            return dict(config=config, drive=drive, video=video, max_batches=batches, save_frames=params.get('save_frames', True),
+                        continuous_preview=continuous, calibrate_body=calibrate)
         schema = JOBS[kind]['fields']
         if set(params) - {f['key'] for f in schema}:
             raise ValueError('Unknown job parameter.')

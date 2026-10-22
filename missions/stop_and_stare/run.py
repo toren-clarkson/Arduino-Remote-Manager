@@ -10,6 +10,7 @@ import csv
 import json
 import os
 import time
+from collections import deque
 from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
@@ -39,9 +40,11 @@ class CameraUnavailable(RuntimeError):
 
 class Runner:
     def __init__(self, cfg, source, perception, driver, session, *, headless=False, save_frames=False,
-                 stop_file=None, preview_path=None, telemetry=None):
+                 stop_file=None, preview_path=None, telemetry=None, body=None):
         self.cfg, self.source, self.perception, self.driver = cfg, source, perception, driver
         self.planner = Planner(cfg)
+        self.body = body
+        self.pending_body = None
         self.session = session
         self.headless, self.save_frames = headless, save_frames
         self.stop_file, self.preview_path = stop_file, preview_path
@@ -49,6 +52,10 @@ class Runner:
         self.last_color_request = ''
         self.telemetry = telemetry
         self.last_telemetry = -float('inf')
+        self.last_window_update = -float('inf')
+        self.camera_arrivals = deque(maxlen=120)
+        self.last_camera_sequence = None
+        self.detector_ms = None
         self.phase = "START"
         self.display = np.zeros((480, 640, 3), np.uint8)
         self.window = "Stop-and-stare object -> AprilTag"
@@ -58,6 +65,7 @@ class Runner:
         self.log = csv.DictWriter(self.file, fieldnames=[
             "time", "event", "phase", "leg", "sequence", "identity", "track_id", "x", "size",
             "frame_age_ms", "inference_ms", "step", "left", "right", "hold_seconds",
+            "left_hold_seconds", "right_hold_seconds",
         ])
         self.log.writeheader()
 
@@ -80,14 +88,22 @@ class Runner:
             print(f"Phase: {phase} | leg: {self.planner.leg}", flush=True)
         self.source.poll(time.monotonic())  # drain arrivals during movement; never decode or infer here
         now = time.monotonic()
-        if self.telemetry and now-self.last_telemetry >= .2:
+        packet = self.source.latest
+        if packet and packet.sequence != self.last_camera_sequence:
+            self.camera_arrivals.append(packet.received_at)
+            self.last_camera_sequence = packet.sequence
+        if self.telemetry and now-self.last_telemetry >= 1/self.cfg.preview_fps:
             packet = self.source.latest
+            arrivals = [t for t in self.camera_arrivals if now-t <= 2]
+            fps = (len(arrivals)-1)/(arrivals[-1]-arrivals[0]) if len(arrivals)>1 and arrivals[-1]>arrivals[0] else 0
             self.telemetry.update(phase=self.phase, leg=self.planner.leg,
+                camera_fps=round(fps, 1), detector_ms=self.detector_ms,
                 camera_connected=self.source.healthy(now),
                 frame_age_seconds=now-packet.received_at if packet else None,
                 jpeg=packet.jpeg if packet else None, sequence=packet.sequence if packet else None)
             self.last_telemetry = now
-        if not self.headless:
+        if not self.headless and now-self.last_window_update >= 1/30:
+            self.last_window_update = now
             preview = self.display.copy()
             cv2.putText(preview, f"{self.planner.leg.upper()} | {phase} | {self.step_name}",
                         (10, 25), cv2.FONT_HERSHEY_SIMPLEX, .55, (0, 220, 255), 2)
@@ -121,6 +137,7 @@ class Runner:
     async def recover_camera(self, reason):
         await self.driver.stop()
         self.planner.reset_memory()
+        self.pending_body = None
         self.event('camera_gap')
         print(f'Camera interrupted: {reason}. Motors stopped; PhoneSense stays running. '
               f'Waiting up to {self.cfg.camera_reconnect_timeout:g}s for fresh frames. '
@@ -172,6 +189,7 @@ class Runner:
                         raise TimeoutError("Stationary inference timed out; reduce image size or use a faster model")
                     await asyncio.sleep(.01)
                 sighting, self.display = task.result()
+                self.detector_ms = round((time.monotonic()-started)*1000, 1)
                 if camera_gap or not self.source.healthy(time.monotonic()):
                     raise CameraUnavailable('Camera was interrupted during stationary inference')
                 if self.telemetry:
@@ -257,19 +275,37 @@ class Runner:
             self.apply_color_request()
             await asyncio.sleep(.02)
         sighting = await self.observe()
+        if self.body is not None and self.pending_body is not None:
+            before, impulse, ended = self.pending_body
+            if (self.cfg.body_learning=='tag_online' and sighting is not None and sighting.kind=='tag'
+                    and sighting.identity==before.identity and sighting.kind==before.kind
+                    and time.monotonic()-ended <= self.cfg.position_memory_seconds):
+                from robotics_lab.body_model import feature
+                accepted = self.body.adapt(impulse,feature(sighting)-feature(before))
+                if self.telemetry:
+                    self.telemetry.update(body_updates=self.body.updates,body_update_accepted=accepted)
+            self.pending_body = None
         if self.apply_color_request():
             return  # discard the old-color burst; observe again with the new color
         self.poll("PLAN")
         step = self.planner.plan(sighting, time.monotonic())
+        if self.body is not None:
+            step = self.body.choose(sighting,step,self.cfg)
         self.step_name = step.name
-        self.event("decision", step=step.name, left=step.left, right=step.right, hold_seconds=step.hold_seconds)
+        holds = step.wheel_holds or (step.hold_seconds,step.hold_seconds)
+        self.event("decision", step=step.name, left=step.left, right=step.right, hold_seconds=step.hold_seconds,
+                   left_hold_seconds=holds[0],right_hold_seconds=holds[1])
         print(f"{self.planner.leg}: {step.name}", flush=True)
         print(f"Command requested: {step.name} | left={step.left:+.3f}, right={step.right:+.3f} "
               f"| hold={step.hold_seconds:.3f}s | {'DRIVE' if self.driver.drive else 'PREVIEW'}", flush=True)
-        if step.hold_seconds > 0:
+        if step.wheel_holds:
+            print(f'Independent wheel holds: left={holds[0]:.3f}s, right={holds[1]:.3f}s',flush=True)
+        if step.left != 0 or step.right != 0:
             started = time.monotonic()
             await self.driver.pulse(step, self.motion_tick)
             self.planner.motion_completed(step, time.monotonic()-started, time.monotonic())
+            if self.body is not None and sighting is not None and self.driver.drive and self.driver.last_impulse is not None:
+                self.pending_body = (sighting,self.driver.last_impulse,time.monotonic())
             self.event("motors_stopped")
 
     def apply_color_request(self):
@@ -282,11 +318,69 @@ class Runner:
         data = json.loads(path.read_text(encoding='utf-8'))
         self.perception.set_color(data['hsv'])
         self.planner.reset_memory()
+        self.pending_body = None
         self.last_color_request = path.name
         print(f"Color selected: HSV {data['hsv']}. Starting a fresh stationary observation.", flush=True)
         if self.telemetry:
             self.telemetry.update(selected_hsv=data['hsv'], color_request=data['id'])
         return True
+
+
+async def continuous_preview(runner, limit=0):
+    """Latest-frame detector display. No planning, pulse or Arduino connection."""
+    if runner.driver.drive:
+        raise ValueError('Continuous preview cannot enable motors')
+    sequence = count = 0
+    try:
+        while not runner.source.healthy(time.monotonic()):
+            runner.poll('WAIT_CAMERA')
+            if runner.source.eof:
+                raise VideoEnded
+            await asyncio.sleep(.01)
+        runner.perception.begin_burst()
+        while True:
+            try:
+                runner.apply_color_request()
+                if not getattr(runner.perception, 'ready', lambda leg: True)(runner.planner.leg):
+                    runner.poll('WAIT_COLOR')
+                    if runner.source.eof:
+                        raise VideoEnded
+                    await asyncio.sleep(.01)
+                    continue
+                packet = await runner.wait_new(sequence, time.monotonic()+runner.cfg.observation_timeout, 'DETECT_PREVIEW')
+                sequence = packet.sequence
+                started = time.monotonic()
+                task = asyncio.create_task(asyncio.to_thread(runner.perception.detect, packet.jpeg, runner.planner.leg))
+                try:
+                    while not task.done():
+                        runner.poll('DETECT_PREVIEW')
+                        if time.monotonic()-started > runner.cfg.inference_timeout:
+                            raise TimeoutError('Detector preview inference timed out')
+                        await asyncio.sleep(.002)
+                    sighting, runner.display = task.result()
+                    runner.detector_ms = round((time.monotonic()-started)*1000, 1)
+                finally:
+                    if not task.done():
+                        task.cancel()
+                        await asyncio.gather(task, return_exceptions=True)
+                if runner.apply_color_request():
+                    continue
+                if runner.telemetry:
+                    runner.telemetry.publish_observation(runner.display)
+                fields = dict(inference_ms=runner.detector_ms, frame_age_ms=(time.monotonic()-packet.received_at)*1000)
+                if sighting:
+                    fields.update(identity=sighting.identity, x=sighting.x, size=sighting.size, track_id=sighting.track_id)
+                runner.event('preview_frame', **fields)
+                count += 1
+                if limit and count >= limit:
+                    return 'preview frame limit reached'
+            except CameraUnavailable as exc:
+                await runner.recover_camera(exc)
+    except VideoEnded:
+        return 'preview video ended'
+    finally:
+        runner.file.close()
+        cv2.destroyAllWindows()
 
 
 async def main(args):
@@ -296,6 +390,19 @@ async def main(args):
     cfg = getattr(args, "config", None) or replace(Config(), weights=args.weights, target_class=args.target_class,
                                                   arduino_ip=args.arduino_ip, tag_id=args.tag_id)
     cfg.validate()
+    if getattr(args,'calibrate_body',False):
+        if not args.drive or args.video:
+            raise ValueError('Body calibration requires explicit driving and a live robot camera')
+        cfg = replace(cfg,mission_mode='tag_only',body_control='off')
+        from robotics_lab.body_model import body_path
+        if body_path(cfg).exists():
+            raise ValueError('Choose a new body_model filename; calibration never overwrites profiles')
+    body = None
+    if cfg.body_control == 'learned' and not getattr(args,'continuous_preview',False):
+        from robotics_lab.body_model import VisualBodyModel, body_path
+        body = VisualBodyModel.load(body_path(cfg),cfg)  # validate before opening hardware
+    if getattr(args, 'continuous_preview', False) and args.drive:
+        raise ValueError('Continuous detector preview cannot enable motors')
     perception = Perception(cfg)  # validate weights/class before opening motor connection
     print("Preparing perception before opening the camera or motor connection...", flush=True)
     if telemetry:
@@ -321,8 +428,15 @@ async def main(args):
         runner = Runner(cfg, source, perception, driver, session,
                         headless=args.headless, save_frames=args.save_frames,
                         stop_file=getattr(args, "stop_file", None), preview_path=getattr(args, "preview_path", None),
-                        telemetry=telemetry)
-        print(await runner.run(args.max_batches))
+                        telemetry=telemetry, body=body)
+        if getattr(args, 'calibrate_body', False):
+            from missions.stop_and_stare.calibration import calibrate
+            result = await calibrate(runner)
+        elif getattr(args, 'continuous_preview', False):
+            result = await continuous_preview(runner, args.max_batches)
+        else:
+            result = await runner.run(args.max_batches)
+        print(result)
         return session
     finally:
         try:
@@ -341,11 +455,17 @@ def arguments():
     parser.add_argument("--tag-id", type=int, default=defaults.tag_id)
     parser.add_argument("--arduino-ip", default=defaults.arduino_ip)
     parser.add_argument("--drive", action="store_true", help="Enable actual robot movement; default is preview only")
+    parser.add_argument('--continuous-preview', action='store_true', help='Continuous detector display, motors disabled')
+    parser.add_argument('--calibrate-body', action='store_true', help='Learn camera response to motor pulses using a fixed AprilTag; requires --drive')
     parser.add_argument("--video", type=Path, help="Replay a video, never connect to the robot")
     parser.add_argument("--headless", action="store_true", help="Replay without a preview window")
     parser.add_argument("--save-frames", action="store_true", help="Save accepted stationary images with session logs")
     parser.add_argument("--max-batches", type=int, default=0, help="Limit observation batches; 0 runs until done or quit")
     args = parser.parse_args()
+    if args.continuous_preview and (args.drive or args.calibrate_body):
+        parser.error('Continuous preview cannot drive or calibrate')
+    if args.calibrate_body and (not args.drive or args.video):
+        parser.error('Body calibration requires --drive and a live robot camera')
     if args.video and args.drive:
         parser.error("--video and --drive cannot be combined")
     if args.config:

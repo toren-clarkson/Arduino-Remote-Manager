@@ -42,6 +42,12 @@ class Config:
     filter_motion_noise: float = 0.25
     filter_max_uncertainty: float = 0.5
     motion_driver: str = "ramped"
+    preview_fps: int = 25  # raw/display stream cap; does not change motion policy
+    body_control: str = 'off'  # off or learned
+    body_model: str = 'calibrations/robot-body.json'
+    body_learning: str = 'frozen'  # frozen or tag_online (fixed marker only)
+    body_probe_speed: float = .12
+    body_probe_seconds: float = .06
     object_stop_area: float = 0.12  # bounding-box area / full image area
     tag_stop_width: float = 0.24  # mean tag edge / full image width
     center_tolerance: float = 0.12  # normalized -1..1 horizontal error
@@ -83,6 +89,14 @@ class Config:
                 if isinstance(default, int) and not isinstance(value, int):
                     raise ValueError(f"{field.name} must be an integer")
         from .components import OPTIONS
+        if not 1 <= self.preview_fps <= 30:
+            raise ValueError('preview_fps must be between 1 and 30')
+        if self.body_control not in {'off','learned'} or self.body_learning not in {'frozen','tag_online'}:
+            raise ValueError('Unknown body controller/learning setting')
+        if not isinstance(self.body_model,str) or not self.body_model.strip() or not self.body_model.endswith('.json'):
+            raise ValueError('body_model must be a JSON profile filename')
+        if not 0 < self.body_probe_speed <= .3 or not .01 <= self.body_probe_seconds <= .2:
+            raise ValueError('Body probe demand must be in (0,.3], hold in [.01,.2] seconds')
         for key, choices in OPTIONS.items():
             if not isinstance(getattr(self, key), str) or getattr(self, key) not in choices:
                 raise ValueError(f"{key}: choose from {', '.join(choices)}")

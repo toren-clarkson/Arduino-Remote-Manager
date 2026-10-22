@@ -160,11 +160,14 @@ def mission(store, directory, p):
     telemetry = MissionTelemetry(directory, drive=p['drive'], replay=bool(p['video']))
     values = dict(p['config'])
     values['weights'] = store.path(values['weights'])
+    values['body_model'] = str(store.path(values.get('body_model', 'calibrations/robot-body.json')))
     cfg = Config(**values)
     args = SimpleNamespace(config=cfg, video=store.path(p['video']) if p['video'] else None,
                            drive=p['drive'], headless=True, save_frames=p['save_frames'],
                            max_batches=p['max_batches'], stop_file=directory/'stop', preview_path=directory/'preview.jpg',
                            telemetry=telemetry)
+    args.continuous_preview = p.get('continuous_preview', False)
+    args.calibrate_body = p.get('calibrate_body', False)
     finished = threading.Event()
     def guard():
         # Cooperative fail-stop if this web server disappears. The firmware is unchanged.
@@ -177,6 +180,9 @@ def mission(store, directory, p):
     try:
         session = asyncio.run(main(args))
         telemetry.update(phase='FINISHED', camera_connected=False)
+        if args.calibrate_body:
+            return dict(files=[store.relative(session),store.relative(Path(cfg.body_model))],
+                        message='Body response profile learned. Select body_control=learned and this body_model for a mission.')
         return dict(files=[store.relative(session)], message='Mission process finished; inspect its decisions and stationary images in the session log.')
     except StopRequested:
         telemetry.update(phase='STOPPED', camera_connected=False)

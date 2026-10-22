@@ -48,6 +48,7 @@ For a custom object, use [training/README.md](training/README.md) to collect/lab
 | [demos/apriltag/](demos/apriltag/README.md) | Earlier simple and filtered color -> tag demos |
 | [demos/motors/](demos/motors/README.md) | Remote LED check and dual-motor template |
 | [robotics_lab/](robotics_lab/README.md) | Shared PWM ramps, older image-navigation controller, paths |
+| [calibrations/](calibrations/README.md) | Camera-based body learning and saved per-robot response profiles |
 | [tools/](tools/README.md) | Printable AprilTag generation |
 | [models/](models/README.md) | Pretrained and custom `.pt` weights |
 | [assets/tags/](assets/tags/README.md) | Printable markers |
@@ -77,6 +78,17 @@ Tests do not move physical motors. They exercise motion ramps, target confirmati
 
 ## TODO
 
+New: [robot body learning](calibrations/README.md) fits a small camera-response
+model from eight controlled motor probes, including reversed polarity and unequal
+response. Select a learned profile between vision and motor execution; optional
+fixed-tag online adaptation uses lightweight least squares, without neural training.
+Hardware calibration is user-started and still needs verified pins and safe limits.
+
+Web missions now stream raw JPEGs through an in-memory worker connection instead
+of writing every frame to disk. **Continuous detector preview** displays inference
+without driving; normal driving retains stop-and-stare. The monitor shows camera FPS
+and inference milliseconds separately. See [webapp instructions](webapp/README.md).
+
 Implemented from the original list (October 2026):
 
 - [x] **Visual steering PID:** optional variable-interval PID controls each turn's hold duration, with bounds, integral limiting, derivative smoothing and resets on target loss/change. Existing PWM ramps still handle acceleration and braking. Select `steering_controller = pid`; this is image-error steering, not measured motor-speed regulation.
@@ -88,7 +100,8 @@ Implemented from the original list (October 2026):
 Future implementation:
 
 - [ ] **Closed-loop wheel-speed PID:** add wheel encoders, define pin/tick/direction calibration and timestamped Telemetrix feedback, then implement per-wheel speed controllers and tests for stalled wheels, lost feedback and integral windup. Requires hardware measurements and compatible Arduino firmware; PWM demand is currently not a speed measurement.
-- [ ] **Calibrated motion-aware prediction:** record actual yaw/translation versus motor demand, including ramp-up/down, battery level and load; add encoder/IMU or calibrated camera-motion input to the estimator. Do not assume a timed pulse equals a known angle. The present filter increases uncertainty after motion instead of inventing that relationship.
+- [x] **Local camera-response learning:** fit motor-to-image response, validate/save per-robot profiles, choose bounded pulses with independent wheel braking, and optionally make bounded updates from fixed AprilTags. See [calibrations](calibrations/README.md). Physical calibration remains to be run on your robot.
+- [ ] **Full motion-aware dynamics:** extend the local visual-response model with measured yaw/translation, encoder/IMU feedback, battery/load effects and transient/reversal behavior. Do not assume a pulse equals a known angle. Integrate the learned response into the Kalman prediction; currently that filter conservatively increases uncertainty after motion.
 - [ ] **Capture-time synchronization:** extend the camera transport to include capture timestamps and sequence IDs with clock-offset estimation. Fresh local arrivals cannot fully measure phone/network buffering; validate prediction against actual capture latency.
 - [ ] **Learning/adaptive tracking:** collect synchronized real-robot sessions with detections, commands and measured motion; build a replay benchmark for blur, dropouts, identical objects and overshoot. Train/evaluate an adaptive motion or uncertainty model offline before offering bounded opt-in adaptation. The current Kalman filter is a fixed mathematical estimator, not a learned model.
 - [ ] **More mission/provider plugins:** add task-specific input schemas for new detectors, trackers and motion drivers; support workflow composition beyond the three existing sequences. Continuous-video trackers need an explicit timing/odometry design rather than bypassing stationary observation rules.
