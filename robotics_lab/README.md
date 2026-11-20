@@ -1,19 +1,20 @@
-# Shared robot code
+# Shared robot helpers
 
-These modules contain reusable components and do not run a robot on import.
+The root mission files run directly. These small helpers are shared so motor ramps
+and the older filtered navigator are maintained in one place; none opens hardware
+on import.
 
-| Module | Implemented behavior |
+| Module | Purpose |
 |---|---|
-| `motor_control.py` | Signed PWM ramps, cached output commands, reversal through zero, immediate stop, gradual stop, and timed search scheduling |
-| `april_navigation.py` | Earlier continuous image-based navigation with filtering, bounded prediction, acquisition/loss states and arrival confirmation; used by `demos.apriltag.robust` |
-| `paths.py` | Checkout-relative paths for models, runs and printable tags |
+| `motor_control.py` | PWM ramps, reversal through zero, immediate/gradual stopping and intermittent search scheduling |
+| `april_navigation.py` | Filtered navigation used by `robust-april-tag.py` |
+| `paths.py` | Paths to local model weights, recorded runs and printable tags |
+| `network.py` | Fixed robot AP address/Telemetrix port and automatic PC PhoneSense address selection |
+| `adaptive_control.py` | Local image-response identification, RLS updates, robot/surface profile storage and visual servo control |
+| `console.py` | Simple console settings shared by the root programs |
 
-Use `from robotics_lab.motor_control import SmoothMotorController`. After pin setup, request each motor's speed repeatedly on the board's event loop; calls advance the PWM ramp. `stop()` bypasses the ramp for exit/fault stops. `is_stopped` describes commanded PWM, not measured wheel velocity.
-
-The fully discrete mission uses `missions.stop_and_stare.controller` for decisions and `motion.PulseDriver` for a complete ramp/hold/brake step. It does not use the continuous navigator to steer during movement.
-
-Run relevant checks from the root:
-
-```powershell
-.\.venv\Scripts\python.exe -m unittest tests.test_motor_control tests.test_timed_search tests.test_robust_april_tag -v
-```
+All stop-and-stare mission settings, perception, memory and sequencing are in
+[stop-and-stare.py](../stop-and-stare.py). There is no webapp, job runner, live-video
+proxy or component registry. [adaptive-homing.py](../adaptive-homing.py) is the
+standalone continuous learned-control mission; its
+[guide](../docs/ADAPTIVE_HOMING.md) explains calibration, limits and research.

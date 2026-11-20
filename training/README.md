@@ -1,9 +1,7 @@
 # Roboflow dataset -> trained YOLO -> robot
 
-The [local webapp](../webapp/README.md) provides forms for uploads, frame extraction,
-Roboflow/ZIP import, model inspection, training and logs. Its training executor
-also supports segmentation, pose and OBB with matching task-specific weights and
-labels; the command-line helper below remains focused on detection.
+Use the command-line helpers below; there is no local dashboard. Keep your existing
+datasets and weights in `datasets/` and `models/`.
 
 On this Windows ARM64 host running x64 Python, Polars 2.0 fails with
 `unknown feature flag: 'sse3'` when saving training results. The project pins
@@ -50,7 +48,7 @@ $env:ROBOFLOW_API_KEY = "your-private-key"
 .\.venv\Scripts\python.exe -m training.download_dataset --workspace YOUR_WORKSPACE --project YOUR_PROJECT --version 1 --output datasets/my_object
 ```
 
-Replace those placeholders with your own export details. Generate the version/export in the web app first. The utility downloads YOLO-format data to a **new** directory and validates archive paths before extraction. It does not upload images, create annotations, or train the model. The key is read from the environment and not written to source files or printed in request errors. No private export was downloaded during project setup because no account details/key were provided.
+Replace those placeholders with your own export details. Generate the version/export on the Roboflow website first. The utility downloads YOLO-format data to a **new** directory and validates archive paths before extraction. It does not upload images, create annotations, or train the model. The key is read from the environment and not written to source files or printed in request errors. No private export was downloaded during project setup because no account details/key were provided.
 
 ## 3. Train YOLO
 
@@ -69,12 +67,12 @@ The defaults are starting values, not a guarantee of accuracy. Inspect validatio
 ## 4. Preview your model with the mission
 
 ```powershell
-.\.venv\Scripts\python.exe -m missions.stop_and_stare.run --weights models/my_object.pt --target-class my_object --tag-id 0 --save-frames
+.\.venv\Scripts\python.exe stop-and-stare.py --weights models/my_object.pt --target-class my_object --tag-id 0
 ```
 
 The program prints model classes and rejects a requested class that is not present. It starts in preview mode with no Arduino connection. Observe the confirmed boxes, area percentages and planned actions, then calibrate the proximity threshold and discrete steps. To enable the actual robot after checking configuration, add `--drive --arduino-ip YOUR_BOARD_IP`.
 
-YOLO + ByteTrack is called only on stationary observation bursts. Track IDs are reset after a camera movement; selecting the same class afterward cannot guarantee identity between visually identical objects. Training a distinctive class or keeping one target instance in view helps make the task unambiguous. See [the full mission guide](../missions/stop_and_stare/README.md).
+The standalone mission detects the chosen class only in stationary observation bursts. It selects the largest matching box; it cannot distinguish two identical objects of the same class. See the [root instructions](../README.md).
 
 ## Implemented helpers
 
@@ -85,5 +83,3 @@ YOLO + ByteTrack is called only on stationary observation bursts. Track IDs are 
 | `train_yolo.py` | Labeled `data.yaml`, initial weights, training settings | Training results and a new `.pt` model |
 
 No custom model has been trained automatically: custom training requires your labeled dataset and an explicit training run. The included pretrained model already works for a demo class such as `bottle`.
-
-Tracking reference: [Ultralytics Track mode and ByteTrack](https://docs.ultralytics.com/modes/track/).

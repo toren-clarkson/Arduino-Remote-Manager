@@ -6,7 +6,6 @@ __pycache__/
 build/
 dist/
 .env
-.control/
 calibrations/**/*.json
 datasets/*
 !datasets/README.md

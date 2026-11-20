@@ -1,7 +1,11 @@
-# Printable markers
+# Printable AprilTags
 
-The [local webapp](../../webapp/README.md) AprilTags page generates and prints
-markers, tests real photos, and injects synthetic tags into test images.
-Select the same ID and detector settings in a saved mission profile.
+`apriltag_36h11_id0.png` is the existing ID 0 marker used by the default mission.
+Print it flat, keep the white border and avoid glare. Select the same ID with
+`--tag-id` in the script. Generate another marker from the project root:
 
-`apriltag_36h11_id0.png` is the existing ID 0 marker. Keep the white border when printing, mount it flat, and avoid glare. Generate another ID with `python -m tools.generate_tag ID` from the root. See [tools/README.md](../../tools/README.md).
+```powershell
+.\.venv\Scripts\python.exe -m tools.generate_tag 3
+```
+
+See [tools](../../tools/README.md). Marker image thresholds are not physical distances.

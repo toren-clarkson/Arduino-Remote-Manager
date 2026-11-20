@@ -14,6 +14,7 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 import phonesense
+from robotics_lab.network import ARDUINO_IP, TELEMETRIX_PORT, configure_phone_camera
 
 from robotics_lab.motor_control import SmoothMotorController
 from robotics_lab.paths import MODELS
@@ -27,15 +28,14 @@ class MotorPins(NamedTuple):
 
 
 # /////////////////////// Edit HERE
-ARDUINO_IP = "10.13.96.68"
 LEFT_MOTOR = MotorPins(in1=7, in2=4, enable=5)
 RIGHT_MOTOR = MotorPins(in1=9, in2=8, enable=6)
-MODEL_PATH = Path(__file__).resolve().parents[2] / "models/best.pt"  # trained weights from Exercise A
+MODEL_PATH = MODELS / "red-ball-v1.pt"  # trained weights from Exercise A
 TARGET_CLASS: str | None = None  # e.g. "ball"; None follows the largest detected object
 CONFIDENCE = 0.5
 IMAGE_SIZE = 416
 DEVICE = "cpu"  # use "0" for a compatible CUDA GPU
-PHONE_IP: str | None = None  # PC address shared with the phone, if auto choice is wrong
+PHONE_IP: str | None = None  # optional override; AP interface is selected automatically
 
 BASE_SPEED = 0.35
 STEERING_GAIN = 0.5
@@ -109,15 +109,10 @@ async def main(model, *, camera_only=False) -> None:
     inference = None
     try:
         cam = phonesense.start()
-        if PHONE_IP:
-            cam.select_ip(PHONE_IP)
-        print("Phone camera URLs (choose the PC address on your phone's network):")
-        for url in cam.phone_urls:
-            print(" ", url)
-        print("On the phone: accept the local HTTPS certificate, Connect, Start camera.")
+        configure_phone_camera(cam, PHONE_IP)
         if not camera_only:
             board = TelemetrixUnoR4WiFiAio(
-                transport_address=ARDUINO_IP, autostart=False,
+                transport_address=ARDUINO_IP, ip_port=TELEMETRIX_PORT, autostart=False,
                 loop=asyncio.get_running_loop(), close_loop_on_shutdown=False,
                 shutdown_on_exception=False, hard_reset_on_shutdown=False,
             )
@@ -261,6 +256,8 @@ def load_model(path: str):
 
 
 if __name__ == "__main__":
+    from robotics_lab.console import configure_script
+    configure_script(globals())
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=str(MODEL_PATH), help="Local best.pt weights, or yolo26n.pt for COCO.")
     parser.add_argument("--camera-only", action="store_true", help="Preview YOLO without connecting to the Arduino.")

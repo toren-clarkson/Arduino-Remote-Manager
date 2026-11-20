@@ -1,7 +1,7 @@
 """Color -> AprilTag approach with confirmed detections and bounded loss handling.
 
 Run --camera-only --tag-only first; --video clip.avi always disables the Arduino.
-See DESIGN.md for research, timing limits, recording and tuning.
+See APRILTAG_DESIGN.md for research, timing limits, recording and tuning.
 """
 
 import argparse
@@ -16,6 +16,7 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 import phonesense
+from robotics_lab.network import ARDUINO_IP, TELEMETRIX_PORT, configure_phone_camera
 
 from robotics_lab.april_navigation import Motion, Navigator, Observation, Settings
 from robotics_lab.motor_control import SmoothMotorController
@@ -23,8 +24,7 @@ from telemetrix_uno_r4.wifi.telemetrix_uno_r4_wifi_aio.telemetrix_uno_r4_wifi_ai
 
 
 # /////////////////////// Edit HERE
-ARDUINO_IP = "10.99.223.68"
-PHONE_IP = None  # PC interface shared with the phone, e.g. "192.168.137.1"
+PHONE_IP = None  # optional override; AP interface is selected automatically
 TARGET_TAG_ID = 0  # None locks onto the first tag confirmed over several frames
 DETECTOR_BACKEND = "apriltag3"  # "opencv" also works with the existing OpenCV install
 TAG_QUAD_DECIMATE = 1.0
@@ -175,14 +175,11 @@ async def main(args):
             fps = fps if math.isfinite(fps) and fps > 0 else RECORD_FPS
         else:
             cam = phonesense.start()
-            if PHONE_IP:
-                cam.select_ip(PHONE_IP)
-            print("Phone camera URLs:", *cam.phone_urls, sep="\n  ")
-            print("On the phone: Connect, Start camera, and allow camera access.")
+            configure_phone_camera(cam, PHONE_IP)
         if not (args.camera_only or args.video):
-            print(f"Connecting to Arduino at {ARDUINO_IP}:31336...", flush=True)
+            print(f"Connecting to Arduino at {ARDUINO_IP}:{TELEMETRIX_PORT}...", flush=True)
             board = TelemetrixUnoR4WiFiAio(
-                transport_address=ARDUINO_IP, autostart=False,
+                transport_address=ARDUINO_IP, ip_port=TELEMETRIX_PORT, autostart=False,
                 loop=asyncio.get_running_loop(), close_loop_on_shutdown=False,
                 shutdown_on_exception=False, hard_reset_on_shutdown=False,
             )
@@ -387,6 +384,8 @@ def arguments():
 
 
 if __name__ == "__main__":
+    from robotics_lab.console import configure_script
+    configure_script(globals())
     try:
         asyncio.run(main(arguments()))
     except KeyboardInterrupt:

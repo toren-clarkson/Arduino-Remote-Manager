@@ -1,71 +1,212 @@
 # VIP 295 robot vision project
 
-## Local webapp
+Run one Python file directly from this folder. Settings live at the top of each
+script; PhoneSense prints its phone-camera URLs in that script's terminal.
+The dashboard, job runner, browser streaming and plugin/control framework have
+been removed. Your datasets, weights, printed tags and recorded runs are retained.
 
-Manage datasets, model libraries, training, AprilTags, configurable missions,
-job logs and project files from the [Main control room](webapp/README.md):
+## Console setup and adaptive Red-Ball -> AprilTag
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\python.exe -m webapp
-```
-
-Open **http://127.0.0.1:5000**. The app starts without connecting the robot;
-mission preview is the default. Read the [plan](webapp/PLAN.md) and
-[extension guide](webapp/EXTENDING.md) for providers, trackers and custom jobs.
-
-The main program is the [stop-and-stare object -> AprilTag mission](missions/stop_and_stare/README.md), using YOLO or OpenCV color detection. It observes only while stopped, makes one bounded turn or forward step, stops and settles, then observes again. Optional PID steering and Kalman position memory are configured in the webapp.
-
-## Start here
-
-From this folder (`Main`), select `.venv\Scripts\python.exe` in VS Code and run:
+Run the simple terminal menu:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\python.exe -m missions.stop_and_stare.run --target-class bottle --tag-id 0
+.\.venv\Scripts\python.exe run.py
 ```
 
-This starts a **preview-only** mission with the included pretrained `models/yolo26n.pt`; it does not connect to the Arduino. Open the PhoneSense PC URL printed in the terminal on the phone, Connect, then Start camera. The default pretrained model supports COCO classes such as `bottle`, `cup`, and `sports ball`.
+Choose a program, then select its applicable weights, object class, AprilTag ID,
+motor pins and initial movement settings in the console. Enter keeps the shown
+value. Settings are remembered for the next setup. Root scripts also accept
+`--setup`; their existing direct commands continue to work.
 
-To run the robot, first verify the IP/pins and timing in [config.py](missions/stop_and_stare/config.py), then use:
+The new [adaptive-homing.py](adaptive-homing.py) learns a small robot/surface
+response model between detection and Telemetrix. It follows the selected YOLO
+object continuously, then homes to the selected AprilTag. Start with **Camera
+preview**, then **Learn robot/surface profile**, then **Drive using a learned
+profile**. Calibration probes each wheel in both directions and measures the
+effect on stationary target images; no neural-network training is required.
+Choose separate profiles for different bodies, surfaces and camera mounts.
+
+Fresh observations update the controller during movement. Brief blur is bridged
+with bounded prediction; prolonged loss stops approach and triggers remembered-side
+search. The stop-and-stare mission is still available. See the
+[adaptive setup, calibration, algorithm and research guide](docs/ADAPTIVE_HOMING.md)
+before calibrating or driving. Learned body profiles apply to the adaptive mission;
+the older programs retain their own control behavior.
+
+For adaptive homing using **OpenCV color tracking instead of YOLO**, choose
+**9. Adaptive OpenCV HSV color -> AprilTag** in `python -m run`, or run:
 
 ```powershell
-.\.venv\Scripts\python.exe -m missions.stop_and_stare.run --drive --target-class bottle --tag-id 0 --arduino-ip 10.13.96.68
+.\.venv\Scripts\python.exe adaptive-homing.py --color --setup
 ```
 
-The current IP is a configurable starting value, not auto-discovery. Arduino firmware remains Telemetrix Wi-Fi, TCP port 31336. PhoneSense runs on the PC, normally HTTPS port 8080. Stop other programs using the board first. Esc/Q and Ctrl+C exit and request zero PWM.
+Choose Preview or Learn profile, connect the phone, and **click the ball in the
+"Adaptive robot - live" window** to select its HSV. During calibration the robot
+stays stopped until selection and the console prompt are complete. The selected
+HSV is saved in the learned profile; Drive reuses it automatically. Use a new
+color calibration when switching from YOLO. This option loads no YOLO model.
+See the [HSV workflow](docs/ADAPTIVE_HOMING.md#opencv-hsv-color-instead-of-yolo).
 
-For a custom object, use [training/README.md](training/README.md) to collect/label images in Roboflow and train YOLO. Videos are optional image sources; a trained `.pt` detector is what the runtime needs. The object-tracker association does not require a separately labeled training video.
+## Robot Wi-Fi: connect directly to the UNO
 
-## Project layout
+First upload the updated [Telemetrix AP sketch](Telemetrix4UnoR4WIFI/Telemetrix4UnoR4WIFI.ino).
+It creates **UNO-R4-Robot**, password **Robot295!**, with fixed Arduino address
+**192.168.4.1** and Telemetrix TCP port **31336**. Connect both PC and phone to that
+Wi-Fi and choose to stay connected without Internet. Serial Monitor is optional.
 
-| Folder | Purpose and instructions |
+All Python clients now use that fixed address automatically. The phone-camera URL
+is different: PhoneSense runs on the **PC's** DHCP address on the AP, which the scripts
+select and print automatically. Open that printed HTTPS URL on the phone, Connect,
+then Start camera. Do not open `192.168.4.1` as a camera page.
+See the [network setup and troubleshooting guide](Telemetrix4UnoR4WIFI/README.md).
+
+## Red-Ball -> AprilTag: stop and stare
+
+[stop-and-stare.py](stop-and-stare.py) defaults to `models/red-ball-v1.pt`, class
+`Red-Ball`, then tag36h11 ID `0`. First join the robot AP and check motor pins/PWM
+settings at the top of the file. Preview does not connect to the Arduino:
+
+```powershell
+.\.venv\Scripts\python.exe stop-and-stare.py
+```
+
+For physical driving on the robot AP (no IP input needed):
+
+```powershell
+.\.venv\Scripts\python.exe stop-and-stare.py --drive
+```
+
+1. The script loads YOLO, starts PhoneSense and prints its HTTPS phone URLs.
+2. Open the PC address reachable from your phone. Accept the local certificate
+   prompt, allow camera access, then choose **Connect** and **Start camera**.
+3. The robot stays stopped, waits `SETTLE_SECONDS`, discards buffered arrivals,
+   and confirms the target across distinct new stationary frames.
+4. It stores the confirmed position, size and a corresponding stationary image.
+   An off-center ball triggers one turn; a centered, small ball triggers one
+   forward pulse. Then it requests zero PWM and repeats the stationary cycle.
+5. Once the ball is centered and its bounding box meets `OBJECT_STOP_AREA`, it
+   switches to the selected AprilTag and approaches using `TAG_STOP_WIDTH`.
+6. When the tag is confirmed centered and close enough, it stops and exits.
+
+**No detection or target-memory updates happen during movement, braking or
+settling.** The live camera window can still display those frames. The second
+window shows the last stationary detection and stays unchanged during movement.
+After stopping, the script gates out old frames before observing again.
+
+One missed burst causes another stationary look. Two missed bursts permit one
+search-turn pulse toward the last-seen side; the robot stops and looks again.
+Memory expires after `TARGET_MEMORY_SECONDS`, then search defaults right. Stored
+memory never authorizes blind forward driving or declares arrival without fresh
+confirmation. Camera interruption, a detection processing timeout or a ramp timeout
+stops the run. Because the robot stays stopped throughout detection, processing
+that takes over one second produces a warning and can still use that settled
+image. The independent camera watchdog stays active; frozen/disconnected video
+still stops the mission. Each detection has an eight-second processing limit.
+
+YOLO defaults to a 320-pixel inference size for this mission. Console setup now
+offers image size, confidence and the stationary inference timeout. For a direct
+run these can be set with `--image-size 320 --inference-timeout 8`. Slow inference
+adds stationary waiting time rather than allowing motion during detection.
+
+### Tune the movement in the same file
+
+| Setting | Meaning |
 |---|---|
-| [missions/stop_and_stare/](missions/stop_and_stare/README.md) | Discrete YOLO/HSV object -> AprilTag missions and control components |
-| [training/](training/README.md) | Video-frame extraction, Roboflow download/export, YOLO training |
-| [demos/color_tracking/](demos/color_tracking/README.md) | Original continuous OpenCV color following |
-| [demos/yolo_tracking/](demos/yolo_tracking/README.md) | Original continuous YOLO detection/following |
-| [demos/apriltag/](demos/apriltag/README.md) | Earlier simple and filtered color -> tag demos |
-| [demos/motors/](demos/motors/README.md) | Remote LED check and dual-motor template |
-| [robotics_lab/](robotics_lab/README.md) | Shared PWM ramps, older image-navigation controller, paths |
-| [calibrations/](calibrations/README.md) | Camera-based body learning and saved per-robot response profiles |
-| [tools/](tools/README.md) | Printable AprilTag generation |
-| [models/](models/README.md) | Pretrained and custom `.pt` weights |
-| [assets/tags/](assets/tags/README.md) | Printable markers |
-| [datasets/](datasets/README.md) | Local images and Roboflow exports, ignored by Git |
-| [runs/](runs/README.md) | Session logs, stationary snapshots and training outputs |
-| [tests/](tests/README.md) | Hardware-free automated tests |
-| [docs/FILE_MAP.md](docs/FILE_MAP.md) | Old filenames mapped to their new locations |
+| `LEFT_MOTOR`, `RIGHT_MOTOR` | `(IN1, IN2, PWM)` wiring; the fixed AP endpoint is shared in `robotics_lab/network.py` |
+| `MIN_PWM` | Motor friction floor; initial value matches the robust AprilTag script |
+| `FORWARD_SPEED`, `TURN_SPEED` | Normalized motor demands, not measured velocity |
+| `FORWARD_HOLD`, `TURN_HOLD`, `SEARCH_HOLD` | Requested hold seconds per movement pulse |
+| `ACCELERATION`, `DECELERATION` | PWM ramp rates; ramps add time to every movement |
+| `SETTLE_SECONDS` | Stationary wait after commanded PWM reaches zero |
+| `DISCARD_FRAMES` | Extra fresh arrivals discarded after settling |
+| `OBSERVE_FRAMES`, `CONFIRMATIONS` | Stationary detections required for one decision |
+| `OBJECT_STOP_AREA` | Ball box area / image area; 0.12 means 12% |
+| `TAG_STOP_WIDTH` | Mean tag edge / image width; 0.24 means 24% |
+| `CENTER_TOLERANCE` | Horizontal alignment tolerance on a -1..1 scale |
+| `IMAGE_SIZE`, `CONFIDENCE`, `DEVICE` | YOLO inference size, confidence and processing device |
+| `INFERENCE_TIMEOUT` | Maximum processing seconds per stationary image; camera freshness is checked separately |
 
-File names now use Python module naming. The old root-level scripts were moved, not discarded. Run examples with the documented `python -m ...` commands from the root. The editable installation also enables shared imports when running a demo directly in VS Code.
+Hold times exclude ramps. Total commanded movement can be much longer than the
+hold; calibrate short pulses on your robot before unattended operation. Increasing
+an arrival threshold approaches closer. These image sizes are not meters.
 
-## Hardware and camera setup
+Other ways to run the same file:
 
-The main mission's current left motor tuple is `(IN1=7, IN2=4, PWM=5)` and right tuple is `(IN1=9, IN2=8, PWM=6)`. Some older templates retain different directions/IPs; check their clearly marked settings rather than assuming every experiment has the same configuration.
+```powershell
+# Only approach AprilTag 0, without YOLO:
+.\.venv\Scripts\python.exe stop-and-stare.py --tag-only
 
-Upload the Telemetrix Uno R4 Wi-Fi sketch as before and join the board and phone to a network reachable from the PC. Read the actual board address in Serial Monitor at 115200 baud. If the sketch waits at `while (!Serial)` before Wi-Fi setup, opening Serial Monitor lets it proceed. No new firmware or encoder code was uploaded by this cleanup.
+# Click an OpenCV color instead of using YOLO, then approach tag 0:
+.\.venv\Scripts\python.exe stop-and-stare.py --color
 
-On a PC with campus Wi-Fi, hotspot, WSL or VPN interfaces, choose the printed PhoneSense URL sharing the phone's network. A hotspot phone may need `https://192.168.137.1:8080/phone`; the correct address depends on your current interfaces. The server must remain running. Accept the local certificate warning and allow camera access. If the page cannot open even on the PC, first inspect the script's terminal output; the server may never have started or the script may have exited. If local access works but the phone times out, check shared network access and the intended Python/firewall rule.
+# Different local detection weights/class:
+.\.venv\Scripts\python.exe stop-and-stare.py --weights models/my_object.pt --target-class my_object
+
+# Offline detector/decision replay, never connects the phone or Arduino:
+.\.venv\Scripts\python.exe stop-and-stare.py --video path\to\clip.avi --headless --max-steps 5
+```
+
+Esc/Q or Ctrl+C exits and requests zero PWM. The script uses local frame-receipt
+times, not unavailable phone-exposure timestamps. Flush/settle reduce buffered
+motion images but cannot prove when a frame was captured. Timed motion has no
+wheel-encoder feedback or firmware command watchdog yet.
+
+## Other standalone programs
+
+| File | Use |
+|---|---|
+| [robust-april-tag.py](robust-april-tag.py) | Existing filtered color -> AprilTag mission; retained behavior and settings |
+| [simple-april-tag.py](simple-april-tag.py) | Earlier color -> tag approach with short-term memory and intermittent search |
+| [default-opencv-tracking.py](default-opencv-tracking.py) | Click-to-follow OpenCV color tracker |
+| [default-yolo-tracking.py](default-yolo-tracking.py) | Local YOLO object following |
+| [dual_motor_template.py](dual_motor_template.py) | Direct motor/camera experiment template |
+| [test_wifi_led.py](test_wifi_led.py) | Blink pin 13 over Telemetrix Wi-Fi; no motors |
+
+Start with the native AprilTag preview that worked well for you:
+
+```powershell
+.\.venv\Scripts\python.exe robust-april-tag.py --camera-only --tag-only --backend opencv
+```
+
+For YOLO-only preview:
+
+```powershell
+.\.venv\Scripts\python.exe default-yolo-tracking.py --camera-only --model models/red-ball-v1.pt
+```
+
+The older color/simple/motor scripts retain their direct hardware defaults. Read
+their pin settings before running; motor directions differ. All share the same AP address.
+The stop-and-stare mission defaults to preview without `--drive`; adaptive homing
+also defaults to preview and requires a calibrated profile for Drive mode.
+`robust-april-tag.py` and `default-yolo-tracking.py` provide `--camera-only`.
+None of the scripts opens hardware just because it is imported.
+
+## Install and camera connection
+
+Use this project's `.venv\Scripts\python.exe` in VS Code:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+```
+
+PhoneSense provides the phone-camera page on the PC's HTTPS port 8080 and starts
+directly in the script. The network helper automatically advertises the PC address
+on the robot AP, even with other Ethernet/VPN interfaces. Optional `PHONE_IP` /
+`--phone-ip` overrides are unnecessary for normal use. The Arduino is always
+`192.168.4.1:31336` after uploading this AP sketch; the PC/phone have separate DHCP
+addresses. Run only one robot/camera script at a time and keep the terminal running.
+
+## Supporting folders
+
+- [training](training/README.md): frame extraction, Roboflow dataset download and YOLO training.
+- [models](models/README.md), [datasets](datasets/README.md): your existing weights and data.
+- [tools](tools/README.md), [assets/tags](assets/tags/README.md): printable AprilTags.
+- [robotics_lab](robotics_lab/README.md): small shared PWM/navigation/path helpers.
+- [Telemetrix4UnoR4WIFI](Telemetrix4UnoR4WIFI/README.md): Arduino AP firmware and Wi-Fi setup.
+- [APRILTAG_DESIGN.md](APRILTAG_DESIGN.md): earlier robust tracker design and research.
+- [tests](tests/README.md): hardware-free checks.
+- [runs](runs/README.md): previous recordings/results and archived dashboard records.
+- [calibrations](calibrations/README.md): adaptive robot/surface profiles, console preferences and historical data.
 
 ## Verification
 
@@ -74,39 +215,18 @@ On a PC with campus Wi-Fi, hotspot, WSL or VPN interfaces, choose the printed Ph
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-Tests do not move physical motors. They exercise motion ramps, target confirmation, tag detectors, replay, and the stop-and-stare phase boundaries. The new mission's physical hold durations, settling time, balance and stopping distance require calibration on your robot. Training helpers do not train a custom model until you supply labeled data and invoke training.
+Tests use simulated boards or offline images/video, never physical motors.
 
 ## TODO
 
-New: [robot body learning](calibrations/README.md) fits a small camera-response
-model from eight controlled motor probes, including reversed polarity and unequal
-response. Select a learned profile between vision and motor execution; optional
-fixed-tag online adaptation uses lightweight least squares, without neural training.
-Hardware calibration is user-started and still needs verified pins and safe limits.
-
-Web missions now stream raw JPEGs through an in-memory worker connection instead
-of writing every frame to disk. **Continuous detector preview** displays inference
-without driving; normal driving retains stop-and-stare. The monitor shows camera FPS
-and inference milliseconds separately. See [webapp instructions](webapp/README.md).
-
-Implemented from the original list (October 2026):
-
-- [x] **Visual steering PID:** optional variable-interval PID controls each turn's hold duration, with bounds, integral limiting, derivative smoothing and resets on target loss/change. Existing PWM ramps still handle acceleration and braking. Select `steering_controller = pid`; this is image-error steering, not measured motor-speed regulation.
-- [x] **OpenCV in the webapp:** choose `object_provider = hsv` for object-only or object-to-AprilTag missions, without model weights. Leave `color_h = -1`, start a preview, then use **Mission monitor → Freeze frame & pick color** (or click the live video first). Click the target in the frozen image. The robot waits stopped until a color is selected and applies changes between observations.
-- [x] **Field help:** question-mark help beside mission, job, upload, profile, model and editor inputs. Hover, focus with Tab, or tap to read the explanation. New schema fields can supply their own help text.
-- [x] **Timestamped short-term estimation:** optional `position_estimator = kalman` smooths confirmed horizontal positions and predicts search guidance with age/uncertainty limits. Local camera-receipt timestamps drive the filter. Movement increases uncertainty and resets learned image velocity; predictions alone cannot authorize forward motion or arrival.
-- [x] **Replaceable components:** trusted registries select object perception, steering, position estimation and motor execution independently. YOLO and HSV share the same mission planner. Existing timed steering, raw memory and ramped movement remain the defaults. See the [component contracts and tuning guide](missions/stop_and_stare/CONTROL.md) and [webapp extension guide](webapp/EXTENDING.md).
-
-Future implementation:
-
-- [ ] **Closed-loop wheel-speed PID:** add wheel encoders, define pin/tick/direction calibration and timestamped Telemetrix feedback, then implement per-wheel speed controllers and tests for stalled wheels, lost feedback and integral windup. Requires hardware measurements and compatible Arduino firmware; PWM demand is currently not a speed measurement.
-- [x] **Local camera-response learning:** fit motor-to-image response, validate/save per-robot profiles, choose bounded pulses with independent wheel braking, and optionally make bounded updates from fixed AprilTags. See [calibrations](calibrations/README.md). Physical calibration remains to be run on your robot.
-- [ ] **Full motion-aware dynamics:** extend the local visual-response model with measured yaw/translation, encoder/IMU feedback, battery/load effects and transient/reversal behavior. Do not assume a pulse equals a known angle. Integrate the learned response into the Kalman prediction; currently that filter conservatively increases uncertainty after motion.
-- [ ] **Capture-time synchronization:** extend the camera transport to include capture timestamps and sequence IDs with clock-offset estimation. Fresh local arrivals cannot fully measure phone/network buffering; validate prediction against actual capture latency.
-- [ ] **Learning/adaptive tracking:** collect synchronized real-robot sessions with detections, commands and measured motion; build a replay benchmark for blur, dropouts, identical objects and overshoot. Train/evaluate an adaptive motion or uncertainty model offline before offering bounded opt-in adaptation. The current Kalman filter is a fixed mathematical estimator, not a learned model.
-- [ ] **More mission/provider plugins:** add task-specific input schemas for new detectors, trackers and motion drivers; support workflow composition beyond the three existing sequences. Continuous-video trackers need an explicit timing/odometry design rather than bypassing stationary observation rules.
-- [ ] **Physical tuning and fault validation:** calibrate HSV lighting tolerances, stop-area thresholds, PID gains, filter noise, friction PWM and settling on the actual robot. Verify balance and stopping distance; add a board-side motor-command timeout for host/network failure.
-
-Hardware-free checks cover color selection, real color-to-tag perception, PID bounds,
-filter uncertainty, component substitution and stop-and-stare boundaries. Browser
-layout and physical robot behavior still need hands-on verification.
+- [x] Add a standalone adaptive visual-servo mission with online body-response learning and per-robot/surface profiles.
+- [x] Add console selection of mission, detector, class, tag, initial settings and robot profile.
+- [ ] Validate adaptive calibration and continuous homing on the physical robot; record results for multiple surfaces.
+- [ ] Estimate phone exposure/transport delay automatically; current compensation uses an explicit profile estimate.
+- [ ] Try and tune a Kalman filter using recorded real-camera footage; adaptive homing currently uses bounded model prediction.
+- [ ] Add stall/slip detection and richer direction/deadband dynamics if the local linear response model proves insufficient.
+- [ ] Add a heartbeat watchdog for a stalled host or network failure before TCP detects a disconnect; normal disconnect cleanup now clears outputs.
+- [ ] Add encoder feedback before implementing closed-loop wheel-speed PID or measured turning angles.
+- [ ] Add capture timestamps / clock synchronization to distinguish camera buffering from fresh exposure.
+- [ ] Revisit optional body-response learning as a separate small script after basic missions work reliably.
+- [ ] Validate balance, friction PWM, stopping distance, settle time and arrival thresholds on the physical robot.

@@ -1,19 +1,20 @@
 """Blink the Uno R4's built-in L LED over Telemetrix Wi-Fi; no motor commands."""
 
 import asyncio
+from robotics_lab.network import AP_SSID, ARDUINO_IP, TELEMETRIX_PORT
 
 from telemetrix_uno_r4.wifi.telemetrix_uno_r4_wifi_aio.telemetrix_uno_r4_wifi_aio import TelemetrixUnoR4WiFiAio
 
 
-# Edit this to match the IP shown by the Arduino Serial Monitor / LED matrix.
-ARDUINO_IP = "10.13.96.68"
-ARDUINO_PORT = 31336
+# Join UNO-R4-Robot first; its Telemetrix address is fixed by the sketch.
+ARDUINO_PORT = TELEMETRIX_PORT
 LED_PIN = 13
 BLINK_COUNT = 10
 BLINK_SECONDS = 0.5
 
 
 async def main() -> None:
+    print(f'Connect this PC to {AP_SSID}; the Arduino address is fixed.', flush=True)
     print(f"Connecting to Arduino at {ARDUINO_IP}:{ARDUINO_PORT}...", flush=True)
     board = TelemetrixUnoR4WiFiAio(
         transport_address=ARDUINO_IP,
@@ -54,6 +55,8 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
+    from robotics_lab.console import configure_script
+    configure_script(globals())
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
@@ -61,6 +64,6 @@ if __name__ == "__main__":
     except (TimeoutError, OSError, RuntimeError) as exc:
         raise SystemExit(
             f"Wi-Fi LED test failed: {exc or type(exc).__name__}. "
-            "Check ARDUINO_IP and the Telemetrix firmware. "
+            f"Join {AP_SSID} and check that the AP sketch is uploaded. "
             "Close other Python scripts connected to the board before retrying."
         ) from exc

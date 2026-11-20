@@ -12,7 +12,7 @@ import numpy as np
 from telemetrix_uno_r4.wifi.telemetrix_uno_r4_wifi_aio import telemetrix_uno_r4_wifi_aio as lib
 
 
-spec = importlib.util.spec_from_file_location("april", Path(__file__).resolve().parents[1] / "demos/apriltag/simple.py")
+spec = importlib.util.spec_from_file_location("april", Path(__file__).resolve().parents[1] / "simple-april-tag.py")
 april = importlib.util.module_from_spec(spec)
 with patch.object(lib, "TelemetrixUnoR4WiFiAio", return_value=MagicMock()):
     spec.loader.exec_module(april)

@@ -1,6 +1,6 @@
 # Robust AprilTag approach for this robot
 
-`demos/apriltag/robust.py` is a separate implementation. It keeps the existing PhoneSense -> laptop -> Telemetrix Uno R4 Wi-Fi arrangement and the color -> tag sequence. `demos/apriltag/simple.py` remains available for comparison.
+`robust-april-tag.py` is a separate implementation. It keeps the existing PhoneSense -> laptop -> Telemetrix Uno R4 Wi-Fi arrangement and the color -> tag sequence. `simple-april-tag.py` remains available for comparison.
 
 ## Research and engineering choice
 
@@ -35,13 +35,15 @@ The additional dependency is already installed here. For another environment:
 Start with tag-only perception:
 
 ```powershell
-.\.venv\Scripts\python.exe -m demos.apriltag.robust --camera-only --tag-only --tag-id 0
+.\.venv\Scripts\python.exe robust-april-tag.py --camera-only --tag-only --tag-id 0
 ```
 
-For the full sequence, verify `ARDUINO_IP`, motor pins, and target ID near the top, then run:
+For the full sequence, join the robot's `UNO-R4-Robot` AP on the PC and phone,
+verify motor pins and target ID near the top, then run. The fixed Arduino address
+comes from `robotics_lab/network.py`; no manual IP input is needed:
 
 ```powershell
-.\.venv\Scripts\python.exe -m demos.apriltag.robust
+.\.venv\Scripts\python.exe robust-april-tag.py
 ```
 
 Connect the phone using one of the printed PC URLs. Click the colored object in the preview. The controller approaches the color, settles, then searches for the configured tag and approaches it. Esc/Q stops and exits. `--tag-only` starts directly with tag homing. `--camera-only` never connects to the board and shows the navigation decisions without commanding hardware.
@@ -62,9 +64,9 @@ The 1.1-second search command includes acceleration. If shortened too far, PWM m
 ## Record and replay the same evidence
 
 ```powershell
-.\.venv\Scripts\python.exe -m demos.apriltag.robust --tag-only --record moving-test.avi --log-csv moving-test.csv
-.\.venv\Scripts\python.exe -m demos.apriltag.robust --video moving-test.avi --tag-only --log-csv replay-test.csv
-.\.venv\Scripts\python.exe -m demos.apriltag.robust --video moving-test.avi --tag-only --backend opencv --headless
+.\.venv\Scripts\python.exe robust-april-tag.py --tag-only --record moving-test.avi --log-csv moving-test.csv
+.\.venv\Scripts\python.exe robust-april-tag.py --video moving-test.avi --tag-only --log-csv replay-test.csv
+.\.venv\Scripts\python.exe robust-april-tag.py --video moving-test.avi --tag-only --backend opencv --headless
 ```
 
 Replay always disables the Arduino connection, even without `--camera-only`. Output filenames must be new; existing files are not overwritten. Video contains unannotated **processed** frames at a nominal 20 FPS, so it is useful for comparing detector settings but does not preserve variable real-time frame intervals. The companion CSV preserves local receive/result times and reports processing duration, a Laplacian sharpness diagnostic, detected/rejected IDs, decision margin/Hamming when available, navigation phase, filtered position and requested wheel speeds. Phase/speed fields sample the latest control output at result delivery.

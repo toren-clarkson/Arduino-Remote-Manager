@@ -1,11 +1,11 @@
-# Generated outputs
+# Recordings and generated results
 
-The [local webapp](../webapp/README.md) Jobs page shows process logs,
-configuration snapshots, previews and artifact downloads. Web training outputs
-use `training/<job-id>/`; mission outputs retain the timestamp layout below.
+Your prior recordings, training runs, mission images and CSV logs are preserved.
+The old dashboard's jobs, profiles, model metadata, history and trash were moved
+intact to `archived_webapp_20261030/`. They are archived data, not an active server.
 
-- `stop_and_stare/<timestamp>/events.csv`: mission phases, stationary detections, decisions, timing and requested pulses.
-- `stop_and_stare/<timestamp>/observations/*.jpg`: raw stationary images, only when `--save-frames` is selected.
-- `training/custom_detector*/`: training curves, validation metrics, predictions and `weights/best.pt`.
-
-Generated contents are ignored by Git. Each mission creates a new timestamped folder. Logs use local monotonic times and laptop frame receipt; they do not include an unavailable phone exposure timestamp. Keep a run's logs when comparing physical tuning changes.
+`robust-april-tag.py` can record a new AVI with `--record` or timing CSV with
+`--log-csv`; both refuse to overwrite existing files. `training/` commands continue
+to save training outputs here. The simplified `stop-and-stare.py` prints decisions
+directly in its terminal and does not start a background job or create display files.
+Generated contents remain ignored by Git.

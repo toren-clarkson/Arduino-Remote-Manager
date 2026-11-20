@@ -1,38 +1,34 @@
-# Automated verification
+# Hardware-free verification
 
-`test_body_learning.py` verifies simulated motor reversal/unequal gain identification,
-fit rejection, immutable profiles, bounded adaptation, independent wheel braking,
-command integration and calibration abort on target loss. `test_live_preview.py`
-checks authenticated in-memory JPEG transport, bounded snapshots and continuous
-inference that never plans or pulses motors.
-
-`test_mission_components.py` adds hardware-free coverage for real HSV-to-AprilTag
-perception, exact frozen-frame color picking, safe color changes, PID timing/limits,
-Kalman uncertainty and component substitution. Physical tuning and browser layout
-require separate hands-on verification.
-
-From the root after installing the editable project:
+From the project root:
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-Tests use simulated hardware; they never intentionally connect to the Arduino. Detector tests use generated tags and video clips. Model smoke checks use local weights separately from unit tests.
+Checks cover PWM ramps/reversal/stopping, intermittent search, short-term AprilTag
+memory, real OpenCV/AprilTag detections, recorded-video replay, YOLO result freshness
+and training helper input validation. The standalone stop-and-stare tests simulate
+an entire ball -> tag mission and verify that neither detection nor target-memory
+updates uses moving-camera frames or runs while commanded PWM is nonzero.
 
-`test_webapp.py` covers the local workbench's path/CSRF checks, uploads,
-revision conflicts, model metadata, file/trash recovery, profile validation,
-archive/YAML validation, resource locking, cooperative mission stop and a real
-marker-generation subprocess. It uses a temporary project. Frontend templates
-can also be checked without a browser with `node tests/check_webapp_ui.cjs` while
-the local server is running; this is not visual browser QA.
+No test connects a physical Arduino. `test_wifi_led.py` at the project root is a
+manual hardware check, not part of this suite. The removed dashboard and framework
+no longer have tests or runtime dependencies. Physical balance, friction PWM and
+stopping distance still need calibration on the robot.
 
-| Test group | Coverage |
-|---|---|
-| `test_stop_and_stare.py` | Object -> tag planning, alignment/proximity, stationary confirmation, directional search, ramp/hold/brake, camera-failure stop, post-settle frame gating, inference only during OBSERVE |
-| `test_motor_control.py`, `test_timed_search.py` | PWM ramps, steady output, reversal, emergency stop and complete search pauses |
-| `test_april_memory.py` | Earlier simple demo's last-position memory and frozen-frame expiry |
-| `test_robust_april_tag.py` | Earlier filtered controller, actual AprilTag backends and recorded replay |
-| `test_yolo_tracking.py` | Earlier continuous YOLO demo selection, age checks and asynchronous loop |
-| `test_training_tools.py` | Frame sampling and dataset ZIP extraction path checks |
+`test_network.py` checks the AP firmware/Python address contract, all eight clients,
+PhoneSense PC-address selection with Ethernet/VPN interfaces, DHCP changes and
+invalid addresses. Its routing test verifies that no probe packets or TCP commands
+are sent. See the [firmware guide](../Telemetrix4UnoR4WIFI/README.md) for compilation.
 
-The physical Wi-Fi LED test is an executable demo in `demos/motors/blink_led.py`, not an automated test. Physical balancing, camera exposure, wheel velocity and calibrated turning angles are outside these hardware-free assertions.
+`test_adaptive_homing.py` covers signed wheel identification, unequal/reversed
+motors, RLS adaptation to gain changes, profile persistence and invalid inputs,
+PWM integration, brief prediction and long loss, fresh arrival confirmation,
+simulated closed-loop convergence, real OpenCV tags, ByteTrack ID lock, and an
+entire continuous ball -> tag mission using a simulated board. `test_console.py`
+checks menu input and preference persistence without hardware.
+
+`test_adaptive_color.py` checks clicked HSV selection/locking, red hue wraparound,
+blue distractor rejection, stored HSV/profile compatibility, absence of YOLO
+loading, and real OpenCV color -> AprilTag replay without a phone or robot.

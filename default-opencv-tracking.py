@@ -5,6 +5,7 @@ from typing import NamedTuple
 import cv2
 import numpy as np
 import phonesense
+from robotics_lab.network import ARDUINO_IP, TELEMETRIX_PORT, configure_phone_camera
 from robotics_lab.motor_control import SmoothMotorController
 from telemetrix_uno_r4.wifi.telemetrix_uno_r4_wifi_aio.telemetrix_uno_r4_wifi_aio import TelemetrixUnoR4WiFiAio
 
@@ -23,7 +24,8 @@ class ColorTracker:
 LEFT_MOTOR = MotorPins(in1=7, in2=4, enable=5)
 RIGHT_MOTOR = MotorPins(in1=9, in2=8, enable=6)
 
-board = TelemetrixUnoR4WiFiAio(transport_address="10.13.96.68")
+board = None
+board_ready = False
 
 HUE_TOLERANCE = 10
 SATURATION_TOLERANCE = 80
@@ -137,13 +139,23 @@ def track_color(frame: np.ndarray, tracker: ColorTracker) -> tuple[int, int] | N
 # PWM counts per second; lower values make starts/stops more gradual.
 PWM_ACCELERATION = 180
 PWM_DECELERATION = 240
-motor_controller = SmoothMotorController(
-    board, (LEFT_MOTOR, RIGHT_MOTOR), min_pwm=MIN_PWM,
-    acceleration=PWM_ACCELERATION, deceleration=PWM_DECELERATION,
-)
+motor_controller = None
 
 
 async def setup_board() -> None:
+    global board, board_ready, motor_controller
+    board_ready = False
+    motor_controller = None
+    board = TelemetrixUnoR4WiFiAio(
+        transport_address=ARDUINO_IP, ip_port=TELEMETRIX_PORT, autostart=False, loop=asyncio.get_running_loop(),
+        shutdown_on_exception=False, close_loop_on_shutdown=False, hard_reset_on_shutdown=False,
+    )
+    await asyncio.wait_for(board.start_aio(), timeout=15)
+    board_ready = True
+    motor_controller = SmoothMotorController(
+        board, (LEFT_MOTOR, RIGHT_MOTOR), min_pwm=MIN_PWM,
+        acceleration=PWM_ACCELERATION, deceleration=PWM_DECELERATION,
+    )
     await board.disable_all_reporting()
     for motor in (LEFT_MOTOR, RIGHT_MOTOR):
         await board.set_pin_mode_digital_output(motor.in1)
@@ -164,13 +176,12 @@ async def move_motors(left_speed: float, right_speed: float) -> None:
 
 async def main() -> None:
     cam = phonesense.start()
-    print("On your phone, open:", cam.phone_url)
+    configure_phone_camera(cam)
     tracker = ColorTracker()
     window_name = "phone"
-    cv2.namedWindow(window_name)
-    cv2.setMouseCallback(window_name, on_color_click, tracker)
-
     try:
+        cv2.namedWindow(window_name)
+        cv2.setMouseCallback(window_name, on_color_click, tracker)
         await setup_board()
         
         latest_obj_pos: tuple[int, int] | None = None
@@ -216,12 +227,26 @@ async def main() -> None:
 
     finally:
         try:
-            await motor_controller.stop()
+            if motor_controller is not None:
+                await motor_controller.stop()
         finally:
             cam.stop()
             cv2.destroyAllWindows()
+            if board is not None:
+                try:
+                    if board_ready:
+                        await asyncio.wait_for(board.shutdown(), timeout=1)
+                finally:
+                    sock = getattr(board, 'sock', None)
+                    if sock is not None and sock.writer is not None:
+                        sock.writer.close()
+                        await sock.writer.wait_closed()
 
 
 if __name__ == "__main__":
-    # The board connected on this loop when it was created, so main() must run on it too
-    board.loop.run_until_complete(main())
+    from robotics_lab.console import configure_script
+    configure_script(globals())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        pass

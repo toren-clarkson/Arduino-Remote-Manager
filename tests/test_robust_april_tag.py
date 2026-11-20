@@ -16,7 +16,7 @@ import numpy as np
 from robotics_lab.april_navigation import Navigator, Observation, Settings
 
 
-spec = importlib.util.spec_from_file_location("robust_april", Path(__file__).resolve().parents[1] / "demos/apriltag/robust.py")
+spec = importlib.util.spec_from_file_location("robust_april", Path(__file__).resolve().parents[1] / "robust-april-tag.py")
 robot = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = robot
 spec.loader.exec_module(robot)

@@ -1,5 +1,7 @@
 # Project reference
 
-[FILE_MAP.md](FILE_MAP.md) lists the previous root-level filenames and their new locations. Each executable group now has its own README containing run commands and implemented behavior.
-
-Start with [the root README](../README.md) or [the stop-and-stare mission guide](../missions/stop_and_stare/README.md). The earlier AprilTag research/design notes are in [demos/apriltag/DESIGN.md](../demos/apriltag/DESIGN.md).
+Start with [README.md](../README.md) for direct run commands and stop-and-stare
+settings. [FILE_MAP.md](FILE_MAP.md) lists the restored standalone filenames.
+Earlier AprilTag research remains in [APRILTAG_DESIGN.md](../APRILTAG_DESIGN.md).
+The [adaptive homing guide](ADAPTIVE_HOMING.md) covers console setup, body/surface
+calibration, continuous control, stored profiles, latency and research choices.

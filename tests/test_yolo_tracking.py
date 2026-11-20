@@ -12,7 +12,7 @@ import numpy as np
 
 
 spec = importlib.util.spec_from_file_location(
-    "yolo_tracking", Path(__file__).resolve().parents[1] / "demos/yolo_tracking/track_yolo.py",
+    "yolo_tracking", Path(__file__).resolve().parents[1] / "default-yolo-tracking.py",
 )
 yolo = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(yolo)
